@@ -30,7 +30,8 @@ class Ploter:
               If True, split the plot into 2 parts.
         """
         print("\n### Plotting a Stripplot...")
-        fold_performance_data = fold_performance_data.set_index("Dataset")
+        fold_performance_data = fold_performance_data[
+            ["Dataset", "Ensemble Technique", "Fold", metric_to_plot]].set_index("Dataset")
 
         if not split:
             self._stripplot(fold_performance_data, metric_to_plot, file_postfix)

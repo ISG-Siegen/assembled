@@ -19,6 +19,7 @@ if __name__ == "__main__":
     fp_data = reser.get_vb_sb_normalization(fp_data, metric_name=metric_name, vb_name=evler.vb_name,
                                             sb_name=evler.sb_name)  # adds column with name: "VB_SB_GAP"
 
+    # -- Optional Preprocessing
     # fp_data = reser.filter_fp_data(fp_data, [3913, 3917, 10101])
 
     # -- Some Basic Plots
@@ -26,22 +27,22 @@ if __name__ == "__main__":
     # plter.stripplot(fp_data, metric_to_plot=metric_name, split=True)
 
     # ---- Specific evaluations
+    # # -- Wins / Ties / Losses
+    # evler.wins_ties_losses(fp_data, metric_name, metric_maximize=True)
+
     # -- Overall Ranking Stuff
+    # # - Raw metric ranking
+    # autorank_results = evler.use_autorank(fp_data, metric_name, metric_maximize=True)
+    # plter.autorank_plot(autorank_results, ext="_{}".format(metric.name))
 
-    # - Raw metric ranking
-    autorank_results = evler.use_autorank(fp_data, metric_name, metric_maximize=True)
-    plter.autorank_plot(autorank_results, ext="_{}".format(metric.name))
-
-    # - Normalized Ranking
-    # fixes a bug with autorank by converting it to a minimization problem
-    anti_bug_data = fp_data.copy()
-    anti_bug_data["VB_SB_GAP"] *= -1
-    autorank_results = evler.use_autorank(anti_bug_data, "VB_SB_GAP", metric_maximize=False)
-    plter.autorank_plot(autorank_results, ext="_{}".format("VB_SB_GAP"))
+    # # - Normalized Ranking + Aggregate
+    # # fixes a bug with autorank by converting it to a minimization problem
+    # anti_bug_data = fp_data.copy()
+    # anti_bug_data["VB_SB_GAP"] *= -1
+    # autorank_results = evler.use_autorank(anti_bug_data, "VB_SB_GAP", metric_maximize=False)
+    # plter.autorank_plot(autorank_results, ext="_{}".format("VB_SB_GAP"))
 
     # # - Bayesian Perspective on Ranks (takes a long time)
     # evler.use_autorank(fp_data, metric_name, metric_maximize=True, approach="bayesian")
     # evler.use_autorank(fp_data, "VB_SB_GAP", metric_maximize=True, approach="bayesian")
 
-    # -- Wins / Ties / Losses
-    # TODO: add code to calculate wins/ties/losses across all datasets for all metrics
