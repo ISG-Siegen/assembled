@@ -1,0 +1,7 @@
+openml~=0.12.2
+pandas~=1.4.1
+numpy~=1.22.3
+requests~=2.27.1
+scipy~=1.8.0
+scikit-learn~=1.0.2
+python-Levenshtein~=0.12.2
