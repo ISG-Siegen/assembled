@@ -130,11 +130,11 @@ class Resulter:
 
         # Normalization code
         def norm_vb_sb_gap(group):
-            m_sba = group.loc[group["Ensemble Technique"] == sb_name, "MPF"].iloc[0]
-            m_vba = group.loc[group["Ensemble Technique"] == vb_name, "MPF"].iloc[0]
+            m_sb = group.loc[group["Ensemble Technique"] == sb_name, "MPF"].iloc[0]
+            m_vb = group.loc[group["Ensemble Technique"] == vb_name, "MPF"].iloc[0]
 
             group["VB_SB_GAP"] = group["MPF"].apply(
-                lambda x: (m_sba - x) / (m_sba - m_vba))
+                lambda x: (m_sb - x) / (m_sb - m_vb))
 
             return group
 
@@ -146,6 +146,21 @@ class Resulter:
         re_df = re_df.reset_index()
 
         return re_df.groupby(["Fold", "Dataset"]).apply(norm_vb_sb_gap).drop(columns=["MPF"])
+
+    @staticmethod
+    def get_relative_improvement_to_sb(fp_df, metric_name, sb_name):
+        re_df = fp_df.copy()
+
+        def ri_sb(fold_dataset_group):
+            m_sb = fold_dataset_group.loc[fold_dataset_group["Ensemble Technique"] == sb_name, metric_name].iloc[0]
+
+            def ri(x):
+                return x / m_sb - 1
+
+            fold_dataset_group["RI_SB"] = fold_dataset_group["AUROC"].apply(ri)
+            return fold_dataset_group
+
+        return re_df.groupby(["Fold", "Dataset"]).apply(ri_sb)
 
     # --- Post Processing
     def filter_fp_data(self, fold_performance_data, reduce_to_ids):

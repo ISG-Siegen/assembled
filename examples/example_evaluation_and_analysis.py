@@ -18,6 +18,8 @@ if __name__ == "__main__":
     fp_data = reser.get_fold_performance_data(metric)
     fp_data = reser.get_vb_sb_normalization(fp_data, metric_name=metric_name, vb_name=evler.vb_name,
                                             sb_name=evler.sb_name)  # adds column with name: "VB_SB_GAP"
+    # adds column with name: "RI_SB"
+    fp_data = reser.get_relative_improvement_to_sb(fp_data, metric_name=metric_name, sb_name=evler.sb_name)
 
     # -- Optional Preprocessing
     # fp_data = reser.filter_fp_data(fp_data, [3913, 3917, 10101])
@@ -39,10 +41,9 @@ if __name__ == "__main__":
     # # fixes a bug with autorank by converting it to a minimization problem
     # anti_bug_data = fp_data.copy()
     # anti_bug_data["VB_SB_GAP"] *= -1
+    # anti_bug_data["RI_SB"] *= -1
     # autorank_results = evler.use_autorank(anti_bug_data, "VB_SB_GAP", metric_maximize=False)
     # plter.autorank_plot(autorank_results, ext="_{}".format("VB_SB_GAP"))
-
-    # # - Bayesian Perspective on Ranks (takes a long time)
-    # evler.use_autorank(fp_data, metric_name, metric_maximize=True, approach="bayesian")
-    # evler.use_autorank(fp_data, "VB_SB_GAP", metric_maximize=True, approach="bayesian")
-
+    # autorank_results = evler.use_autorank(anti_bug_data, "RI_SB", metric_maximize=False, keep_vb=True)
+    # plter.autorank_plot(autorank_results, ext="_{}".format("RI_SB"))
+    # evler.simple_mean(fp_data, "RI_SB", metric_maximize=True)
