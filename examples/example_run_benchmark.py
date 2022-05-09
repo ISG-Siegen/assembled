@@ -41,9 +41,5 @@ if __name__ == "__main__":
                                          meta_train_test_split_fraction=0.5, output_file_path=out_path,
                                          meta_train_test_split_random_state=test_split_rng)
 
-    # ----------------- Problems
-    # 2) can not pass the openml roc auc metric as deslib requires the string
-    # 3) can not pass roc_auc_score to DESLib
-
     # ----------------- TODOs
     # x) collect metadata about evaluation: time taken; parameters; passthrough;
