@@ -100,6 +100,10 @@ class DSEmpiricalPerformanceModel(AbstractEnsemble, AbstractDynamicSelector):
         We chose to add the difference and guarantee a minimal penalty.
 
         TODO: Can we learn the combination of errors?
+        TODO: use log_loss?
+            A1: 0.3 (C1), 0.3 (C2), 0.4(C3) with C3 as GT, log_loss = -log(0.4) = 0.916291
+            A2: 0.5 (C1), 0.05 (C2), 0.45 (C3) with C3 as GT, log_loss = -log(0.45) = 0.798508
+                -> A2 has a lower error even tho wrong prediction
         """
 
         # Collect values needed for the computation
