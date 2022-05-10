@@ -43,8 +43,8 @@ def get_id_and_validate_existing_data(base_path):
     return [p_vals[2].rsplit(sep="_", maxsplit=1)[-1] for p_vals in path_tuples]
 
 
-def get_valid_benchmark_ids():
-    file_path_json = os.path.join("../results/benchmark_metatasks", "benchmark_details.json")
+def get_valid_benchmark_ids(base_path="../results/benchmark_metatasks"):
+    file_path_json = os.path.join(base_path, "benchmark_details.json")
     with open(file_path_json) as json_file:
         benchmark_meta_data = json.load(json_file)
     return [int(t_id) for t_id in benchmark_meta_data["valid_task_ids"]]
