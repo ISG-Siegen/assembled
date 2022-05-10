@@ -52,6 +52,14 @@ class MetaTask:
         self.supported_task_types = {TaskType.SUPERVISED_CLASSIFICATION, TaskType.SUPERVISED_REGRESSION}
 
     @property
+    def n_classes(self):
+        return len(self.class_labels)
+
+    @property
+    def n_instances(self):
+        return len(self.dataset)
+
+    @property
     def meta_dataset(self):
         return pd.concat([self.dataset, self.predictions_and_confidences], axis=1)
 
@@ -751,3 +759,55 @@ class MetaTask:
                 y_pred_ensemble_model = ensemble_model.predict(X_meta_test)
 
             self._save_fold_results(y_meta_test, y_pred_ensemble_model, idx, output_file_path, technique_name)
+
+    # ---- Experimental Functions
+    def _exp_get_base_models_for_all_folds(self, pre_fit_base_models: bool = False,
+                                           base_models_with_names: bool = False,
+                                           label_encoder=False, preprocessor=None):
+        """Get Base Models for all Folds | Experimental | For Evaluation and Analysis
+
+        If the metatasks is created using data from openml, this corresponds to something like sklearn's
+        corss_val_predict.
+        Hence, it represents fake base models as if fitted on the training data of each fold at once/simultaneously.
+
+        To illustrate, given any instance x of X as input, the returned base model will return a prediction for
+        the input as if the fake model was only trained on a the training data of the fold for which x is in the
+        hold-out set.
+
+        Returns
+        -------
+        base_models: list of fake base models
+        X: original input data
+            (preprocessed)
+        y: full ground truth
+        """
+        X, y, base_predictions, base_confidences = self.split_meta_dataset(self.meta_dataset)
+        if preprocessor is not None:
+            X = preprocessor.fit_transform(X)
+        base_models = self._build_fake_models(X, y, X, base_predictions, base_confidences, pre_fit_base_models,
+                                              base_models_with_names, label_encoder)
+        return base_models, X, y
+
+        exit()
+        for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
+
+            # -- Get Data from Metatask
+            X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
+            X_test, y_test, test_base_predictions, test_base_confidences = self.split_meta_dataset(test_metadata)
+
+            # -- Employ Preprocessing
+            if preprocessor is not None:
+                X_train = preprocessor.fit_transform(X_train)
+                X_test = preprocessor.transform(X_test)
+
+            # -- Split for ensemble technique evaluation
+            X_meta_train, X_meta_test, y_meta_train, y_meta_test, = train_test_split(X_test, y_test,
+                                                                                     test_size=meta_train_test_split_fraction,
+                                                                                     random_state=meta_train_test_split_random_state,
+                                                                                     stratify=y_test)
+
+            # -- Build ensemble technique
+            base_models = self._build_fake_models(X_train, y_train, X_test, test_base_predictions,
+                                                  test_base_confidences, pre_fit_base_models, base_models_with_names,
+                                                  label_encoder)
+            # yield base_models, X_test, y_test
