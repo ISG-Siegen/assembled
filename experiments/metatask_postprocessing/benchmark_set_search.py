@@ -15,7 +15,7 @@ from collections import Counter
 from assembledopenml.metatask import MetaTask
 from results.data_utils import get_id_and_validate_existing_data
 from experiments.metatask_postprocessing.old_baselines_code import VirtualBestAlgorithm, SingleBestAlgorithm
-from assembledopenml.compatability.openml_metrics import OpenMLAUROC
+from assembledopenml.compatibility.openml_metrics import OpenMLAUROC
 
 
 def _vba(test_base_predictions, y_test, test_base_confidences, confs_per_class_per_predictor):

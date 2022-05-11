@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List
 from ensemble_techniques.wrapper.abstract_ensemble import AbstractEnsemble
-from assembledopenml.compatability.openml_metrics import AbstractMetric
+from assembledopenml.compatibility.openml_metrics import AbstractMetric
 from sklearn.utils.validation import check_is_fitted
 
 

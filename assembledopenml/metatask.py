@@ -6,7 +6,7 @@ import json
 from openml import OpenMLTask
 from openml.tasks import TaskType
 from assembledopenml.metaflow import MetaFlow
-from assembledopenml.compatability.faked_classifier import FakedClassifier
+from assembledopenml.compatibility.faked_classifier import FakedClassifier
 from typing import List, Tuple, Optional, Callable
 from sklearn.model_selection import train_test_split
 from sklearn.calibration import CalibratedClassifierCV

@@ -2,7 +2,7 @@ from results.data_utils import get_valid_benchmark_ids
 from assembledevaler.resulter import Resulter
 from assembledevaler.ploter import Ploter
 from assembledevaler.evaler import Evaler
-from assembledopenml.compatability.openml_metrics import OpenMLAUROC
+from assembledopenml.compatibility.openml_metrics import OpenMLAUROC
 
 if __name__ == "__main__":
     # Setup analysis and eval tools

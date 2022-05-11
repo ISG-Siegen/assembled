@@ -13,7 +13,7 @@ from ensemble_techniques.custom.ds_epm import DSEmpiricalPerformanceModel
 from results.data_utils import get_default_preprocessing
 
 # -- Get Metric
-from assembledopenml.compatability.openml_metrics import OpenMLAUROC
+from assembledopenml.compatibility.openml_metrics import OpenMLAUROC
 
 # -- Randomness 
 from numpy.random import RandomState
