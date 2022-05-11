@@ -1,5 +1,5 @@
 # -- Imports for Ensemble Techniques
-from sklearn.ensemble import VotingClassifier, StackingClassifier, RandomForestRegressor, RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import KMeans
 from deslib.dcs import APosteriori, APriori, LCA, MCB, MLA, OLA, Rank
@@ -8,6 +8,8 @@ from deslib.des.probabilistic import RRC, DESKL, MinimumDifference, Logarithmic,
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from ensemble_techniques.custom.baselines import SingleBest, VirtualBest
 from ensemble_techniques.custom.ds_epm import DSEmpiricalPerformanceModel
+from ensemble_techniques.sklearn.stacking import StackingClassifier
+from ensemble_techniques.sklearn.voting import VotingClassifier
 
 # -- Get Preprocessing
 from results.data_utils import get_default_preprocessing
@@ -21,29 +23,35 @@ from numpy.random import RandomState
 
 def get_sklearn_techniques(rng_seed):
     # -- Sklearn Existing Models
+    # Could use existing methods but they break with calibration + fake models (due to datasets being too small for cv)
     sklearn_techniques = {
         "sklearn.VotingClassifier": {
             "technique": VotingClassifier,
-            "technique_args": {"voting": "soft"
+            "technique_args": {"voting": "soft",
                                # , "n_jobs": -1
+                               "prefitted": True,
                                },
-            "probability_calibration": "auto"
+            "probability_calibration": "auto",
+            "pre_fit_base_models": True
         },
         "sklearn.StackingClassifier": {
             "technique": StackingClassifier,
             "technique_args": {"final_estimator": LogisticRegression(random_state=RandomState(rng_seed), n_jobs=-1),
                                # "n_jobs": -1
+                               "prefitted": True, "blending": True
                                },
-            "probability_calibration": "auto"
+            "probability_calibration": "auto",
+            "pre_fit_base_models": True
         },
         "sklearn.StackingClassifier.passthrough": {
             "technique": StackingClassifier,
             "technique_args": {"final_estimator": RandomForestClassifier(random_state=RandomState(rng_seed), n_jobs=-1),
                                # "n_jobs": -1
-                               "passthrough": True
+                               "prefitted": True, "blending": True
                                },
-            "probability_calibration": "auto"
-        }
+            "probability_calibration": "auto",
+            "pre_fit_base_models": True
+        },
     }
     # Add default values for sklearn
     sklearn_default_values = {"base_models_with_names": True, "label_encoder": True,

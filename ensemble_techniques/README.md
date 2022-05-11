@@ -31,22 +31,17 @@ We support the following Ensemble Techniques through FakedClassifiers:
     * This is, however, not really relevant as the cost of multiprocessing is higher than fitting/predicting in
       sequential fashion for the FakedClassifiers. Moreover, we can enable multiprocessing for the final estimator by
       hand.
-* Stacking and Voting are usually fit on the original training data. However, we can fit them on our meta-train split,
-  because the both only require the original training data to fit the base models. But the base models' fit function
-  does nothing besides storing some structural information which we can also obtain from the meta-train data. As a
-  result the following behavior is induced:
-    * Stacking is not trained on the cross_val_predictions from the full training data but simply on a meta-train split.
-      With the data we have and how we use fake model, this is the default behavior if we pass the base models to
-      stacking. In other words, the base models can work with the fact that stacking calls cross_val_predictions on
-      them, because they are not re-fitted (fit does not do anything for the fake models) and they return only the
-      meta-train predictions.
-    * Voting is not trained at all (only the base models). For the sake of our usage here, we could fit voting on the
-      original data. But to support calibration we had to remove it and treat it like Stacking. That is, we fit on the
-      meta-train split.
-        * If we used calibration and fit on the original train data, the CalibratedClassifierCV would try to get the
-          prediction data as if the base model had been trained on (potentially new) folds. This is not yet supported by
-          the faked base models because/and this data does not exist on OpenML. The same would happen if we try to fit
-          stacking on the original data.
+* Stacking and Voting are both implemented to fit the base models themselves. We can accommodate for this with a few
+  workarounds for our faked base models. However, Stacking also wants to employ cross_val_predict on the base models. We
+  can not support this for the faked base models, as the data from OpenML and their theoretical concept both do not
+  support this. Hence, we created our own versions of stacking and voting where we can pass already fitted base models.
+  Furthermore, for stacking we added the possibility to use blending (training the final_estimator without
+  cross_vaL_predictions).
+    * In the future, we might want to enable that we simply pass what data is used to train for the final_estimator of
+      stacking.
+    * Technically ,we can support the usage of cross_val_preds as is with our faked base models. This would result in
+      blending behavior without chaining the code of stacking. This however becomes very problematic once you want to
+      add things like base model calibration.
 
 ### Autosklearn
 
@@ -76,7 +71,6 @@ We support the following Ensemble Techniques through FakedClassifiers:
 
 ### Probability Calibration
 
-* Please be aware, adding calibration to the base models increases the overhead for fit and predict. Especially if
-  the ensemble techniques can not work with pre-fitted models. 
-  Consider the following, adding calibration is like adding another model for each base model (on-the-fly or during
-  pre-processing). 
+* Please be aware, adding calibration to the base models increases the overhead for fit and predict. Especially if the
+  ensemble techniques can not work with pre-fitted models. Consider the following, adding calibration is like adding
+  another model for each base model (on-the-fly or during pre-processing). 

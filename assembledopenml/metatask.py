@@ -751,7 +751,7 @@ class MetaTask:
             Whether or not the base models' list should contain the model and its name.
         fit_technique_on_original_data: bool, default=False
             If this is true, the .fit() method of the ensemble is called with X_train and y_train instead
-            of X_meta_train and y_meta_train. [NOT USED CURRENTLY DUE TO FAKED BASE MODELS]
+            of X_meta_train and y_meta_train.
         label_encoder: bool, default=False
             Whether the ensemble technique expects that a label encoder is applied to the fake models. Often required
             for sklearn ensemble techniques.
@@ -811,10 +811,10 @@ class MetaTask:
             ensemble_model = technique(base_models, **technique_args)
 
             # -- Fit and Predict
-            # if fit_technique_on_original_data:  # not supported currently due to calibration and fake models usage
-            #     ensemble_model.fit(X_train, y_train)
-            # else:
-            ensemble_model.fit(X_meta_train, y_meta_train)
+            if fit_technique_on_original_data:  # not supported/used currently
+                ensemble_model.fit(X_train, y_train)
+            else:
+                ensemble_model.fit(X_meta_train, y_meta_train)
 
             if oracle:
                 y_pred_ensemble_model = ensemble_model.oracle_predict(X_meta_test, y_meta_test)
