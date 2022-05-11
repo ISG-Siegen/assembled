@@ -6,7 +6,7 @@ from matplotlib.gridspec import GridSpec
 from sklearn.calibration import CalibrationDisplay
 
 
-def calibration_curves(base_models, X_test, y_test, mt, interactive=False):
+def calibration_curves(base_models, X_test, y_test, mt, interactive=False, save=True, show_plot=False, plt_prefix=""):
     """Code adapted from: https://scikit-learn.org/stable/auto_examples/calibration/plot_compare_calibration.html
     """
 
@@ -70,10 +70,11 @@ def calibration_curves(base_models, X_test, y_test, mt, interactive=False):
             calibration_displays[mod_name] = display
 
     ax_calibration_curve.grid()
-    ax_calibration_curve.set_title("{}Calibration plots [{} - {} - Test_n_instances: {}]".format(add_to_title,
-                                                                                                 mt.openml_task_id,
-                                                                                                 mt.dataset_name,
-                                                                                                 len(y_test)))
+    ax_calibration_curve.set_title(
+        "{}{}Calibration plots [{} - {} - Test_n_instances: {}]".format(plt_prefix, add_to_title,
+                                                                        mt.openml_task_id,
+                                                                        mt.dataset_name,
+                                                                        len(y_test)))
     # Remove legend because it does not work with too many base models
     ax_calibration_curve.get_legend().remove()
 
@@ -96,7 +97,9 @@ def calibration_curves(base_models, X_test, y_test, mt, interactive=False):
                ylabel="Count")
 
     plt.tight_layout()
-    plt.savefig("./output/calibration_curves_for_metatask_{}.pdf".format(mt.openml_task_id))
 
-    if interactive:
+    if save:
+        plt.savefig("./output/calibration_curves_for_metatask_{}.pdf".format(mt.openml_task_id))
+
+    if interactive or show_plot:
         plt.show()

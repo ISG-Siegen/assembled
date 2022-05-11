@@ -3,6 +3,8 @@ from results.data_utils import get_valid_benchmark_ids, get_default_preprocessin
 
 from experiments.probability_calibration.calibration_stuff import calibration_curves
 
+from sklearn.calibration import CalibratedClassifierCV
+
 # -- Main
 if __name__ == "__main__":
 
@@ -23,13 +25,23 @@ if __name__ == "__main__":
         base_models, X_test, y_test = mt._exp_get_base_models_for_all_folds(preprocessor=get_default_preprocessing(),
                                                                             pre_fit_base_models=True,
                                                                             base_models_with_names=True)
-        # calibration_curves(base_models, X_test, y_test, mt)
+        calibration_curves(base_models, X_test, y_test, mt)
 
+        # -- Just for one fold
+        for base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test in mt._exp_yield_base_models_across_folds(
+                test_split_frac, test_split_rng, preprocessor=get_default_preprocessing(),
+                pre_fit_base_models=True, base_models_with_names=True, label_encoder=False):
 
-        from sklearn.metrics import log_loss
-        for name, bm in base_models:
-            print(log_loss(y_test, bm.predict_proba(X_test)))
+            calibration_curves(base_models, X_meta_test, y_meta_test, mt, save=False, show_plot=True)
 
+            cal_base_models = []
+            for name, bm in base_models:
+                # -- Calibrate
+                cal_bm = CalibratedClassifierCV(bm, method="sigmoid", cv="prefit")
+                cal_bm.fit(X_meta_train, y_meta_train)
+                cal_bm.le_ = bm.le_
+                cal_base_models.append((name, cal_bm))
 
-        exit()
-
+            calibration_curves(cal_base_models, X_meta_test, y_meta_test, mt, save=False, show_plot=True,
+                               plt_prefix="Calibrated ")
+            break
