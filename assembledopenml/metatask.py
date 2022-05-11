@@ -9,6 +9,7 @@ from assembledopenml.metaflow import MetaFlow
 from assembledopenml.compatability.faked_classifier import FakedClassifier
 from typing import List, Tuple, Optional, Callable
 from sklearn.model_selection import train_test_split
+from sklearn.calibration import CalibratedClassifierCV
 # from difflib import SequenceMatcher
 from Levenshtein import ratio as levenshtein_ratio  # use this as it is less radical than sequence matcher from python
 import re
@@ -676,11 +677,55 @@ class MetaTask:
                 tmp_df.loc[res_df.index, technique_name] = res_df
                 tmp_df.reset_index().sort_values(by=["Index-Metatask"]).to_csv(out_path, index=False)
 
+    def _probability_calibration(self, base_models, X_meta_train, y_meta_train, probability_calibration,
+                                 pre_fit_base_models):
+
+        # -- Simply return base models without changes
+        if probability_calibration == "no":
+            return base_models
+
+        # -- Select calibration method
+        if probability_calibration != "auto":
+            # We assume the input has been validated and only "sigmoid", "isotonic" are possible options
+            cal_method = probability_calibration
+        else:
+            # TODO-FUTURE: perhaps add something that selects method based on base model types?
+
+            # Select method based on number of instances
+            cal_method = "isotonic" if self.n_instances > 1100 else "sigmoid"
+
+        # --Build calibrated base models
+        cal_base_models = []
+        for bm_data in base_models:
+
+            # - Select the base model
+            if isinstance(bm_data, tuple):
+                bm = bm_data[1]
+            else:
+                bm = bm_data
+
+            # - Determine how to process the base models
+            if pre_fit_base_models:
+                cal_bm = CalibratedClassifierCV(bm, method=cal_method, cv="prefit").fit(X_meta_train, y_meta_train)
+            else:
+                # With cv=2 we have less overhead with fake base models.
+                # Once our current fake base model structure changes, we need to change this as well.
+                cal_bm = CalibratedClassifierCV(bm, method=cal_method, ensemble="False", cv=2)
+
+            # - Set base model
+            if isinstance(bm_data, tuple):
+                cal_base_models.append((bm_data[0], cal_bm))
+            else:
+                cal_base_models.append(cal_bm)
+
+        return cal_base_models
+
     def run_ensemble_on_all_folds(self, technique, technique_args: dict, technique_name,
                                   meta_train_test_split_fraction: float = 0.5, meta_train_test_split_random_state=0,
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
                                   label_encoder=False, fit_technique_on_original_data=False,
-                                  preprocessor=None, output_file_path=None, oracle=False):
+                                  preprocessor=None, output_file_path=None, oracle=False,
+                                  probability_calibration="no"):
         """Run an ensemble technique on all folds and return the results
 
         The current implementation builds fake base models by default such that we can evaluate methods this way.
@@ -706,7 +751,7 @@ class MetaTask:
             Whether or not the base models' list should contain the model and its name.
         fit_technique_on_original_data: bool, default=False
             If this is true, the .fit() method of the ensemble is called with X_train and y_train instead
-            of X_meta_train and y_meta_train.
+            of X_meta_train and y_meta_train. [NOT USED CURRENTLY DUE TO FAKED BASE MODELS]
         label_encoder: bool, default=False
             Whether the ensemble technique expects that a label encoder is applied to the fake models. Often required
             for sklearn ensemble techniques.
@@ -717,11 +762,24 @@ class MetaTask:
             We assume the file is in the correct format if it exists and will create it if it does not exit.
             Here, no option to purge/delete existing files is given. This is must be done in an outer scope.
         oracle: bool, default=False
-            Whether the ensemble technique is an oracle. If true, we pass and cll the method differently.
-        """
+            Whether the ensemble technique is an oracle. If true, we pass and call the method differently.
+        probability_calibration: {"sigmoid", "isotonic", "auto", "no"}, default="no"
+            What type of probability calibration (see https://scikit-learn.org/stable/modules/calibration.html)
+            shall be applied to the base models:
 
-        # -- Parameter Preprocessing
-        # TODO Add safety check for file path here or something
+                - "sigmoid": Use CalibratedClassifierCV with method="sigmoid"
+                - "isotonic": Use CalibratedClassifierCV with method="isotonic"
+                - "auto": Determine which method to use for CalibratedClassifierCV depending on the number of instances.
+                - "no": Do not use probability calibration.
+
+            If pre_fit_base_models is False, CalibratedClassifierCV is employed with ensemble="False" to simulate
+            cross_val_predictions by our Faked Base Models.
+            If pre_fit_base_models is True, CalibratedClassifierCV is employed with cv="prefit" beforehand such that
+            we "replace" the base models with calibrated base models.
+        """
+        # TODO -- Parameter Preprocessing / Checking
+        #   Add safety check for file path here or something
+        #   Check if probability_calibration has correct string names
 
         # -- Iterate over Folds
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
@@ -745,13 +803,18 @@ class MetaTask:
             base_models = self._build_fake_models(X_train, y_train, X_test, test_base_predictions,
                                                   test_base_confidences, pre_fit_base_models, base_models_with_names,
                                                   label_encoder)
+
+            # -- Probability Calibration
+            base_models = self._probability_calibration(base_models, X_meta_train, y_meta_train,
+                                                        probability_calibration, pre_fit_base_models)
+
             ensemble_model = technique(base_models, **technique_args)
 
             # -- Fit and Predict
-            if fit_technique_on_original_data:
-                ensemble_model.fit(X_train, y_train)
-            else:
-                ensemble_model.fit(X_meta_train, y_meta_train)
+            # if fit_technique_on_original_data:  # not supported currently due to calibration and fake models usage
+            #     ensemble_model.fit(X_train, y_train)
+            # else:
+            ensemble_model.fit(X_meta_train, y_meta_train)
 
             if oracle:
                 y_pred_ensemble_model = ensemble_model.oracle_predict(X_meta_test, y_meta_test)
@@ -788,26 +851,23 @@ class MetaTask:
                                               base_models_with_names, label_encoder)
         return base_models, X, y
 
-        exit()
+    def _exp_yield_base_models_across_folds(self, meta_train_test_split_fraction, meta_train_test_split_random_state,
+                                            pre_fit_base_models, base_models_with_names, label_encoder, preprocessor):
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
-
-            # -- Get Data from Metatask
             X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
             X_test, y_test, test_base_predictions, test_base_confidences = self.split_meta_dataset(test_metadata)
 
-            # -- Employ Preprocessing
             if preprocessor is not None:
                 X_train = preprocessor.fit_transform(X_train)
                 X_test = preprocessor.transform(X_test)
 
-            # -- Split for ensemble technique evaluation
-            X_meta_train, X_meta_test, y_meta_train, y_meta_test, = train_test_split(X_test, y_test,
-                                                                                     test_size=meta_train_test_split_fraction,
-                                                                                     random_state=meta_train_test_split_random_state,
-                                                                                     stratify=y_test)
+            X_meta_train, X_meta_test, y_meta_train, y_meta_test = train_test_split(X_test, y_test,
+                                                                                    test_size=meta_train_test_split_fraction,
+                                                                                    random_state=meta_train_test_split_random_state,
+                                                                                    stratify=y_test)
 
-            # -- Build ensemble technique
             base_models = self._build_fake_models(X_train, y_train, X_test, test_base_predictions,
                                                   test_base_confidences, pre_fit_base_models, base_models_with_names,
                                                   label_encoder)
-            # yield base_models, X_test, y_test
+
+            yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test

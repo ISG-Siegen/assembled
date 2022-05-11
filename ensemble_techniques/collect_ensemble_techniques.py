@@ -1,5 +1,5 @@
 # -- Imports for Ensemble Techniques
-from sklearn.ensemble import VotingClassifier, StackingClassifier, RandomForestRegressor
+from sklearn.ensemble import VotingClassifier, StackingClassifier, RandomForestRegressor, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import KMeans
 from deslib.dcs import APosteriori, APriori, LCA, MCB, MLA, OLA, Rank
@@ -24,23 +24,25 @@ def get_sklearn_techniques(rng_seed):
     sklearn_techniques = {
         "sklearn.VotingClassifier": {
             "technique": VotingClassifier,
-            "technique_args": {"voting": "hard", "n_jobs": -1},
-            "fit_technique_on_original_data": True
+            "technique_args": {"voting": "soft"
+                               # , "n_jobs": -1
+                               },
+            "probability_calibration": "auto"
         },
-        # Stacking but not trained on cross-val predictions but on default meta-train split achieved by fake base models
         "sklearn.StackingClassifier": {
             "technique": StackingClassifier,
             "technique_args": {"final_estimator": LogisticRegression(random_state=RandomState(rng_seed), n_jobs=-1),
                                # "n_jobs": -1
                                },
+            "probability_calibration": "auto"
         },
-        "sklearn.StackingClassifier.passthrough": {  # TODO remove this or change final estimator!
+        "sklearn.StackingClassifier.passthrough": {
             "technique": StackingClassifier,
-            "technique_args": {"final_estimator": LogisticRegression(random_state=RandomState(rng_seed), n_jobs=-1,
-                                                                     max_iter=10000),
+            "technique_args": {"final_estimator": RandomForestClassifier(random_state=RandomState(rng_seed), n_jobs=-1),
                                # "n_jobs": -1
                                "passthrough": True
                                },
+            "probability_calibration": "auto"
         }
     }
     # Add default values for sklearn
@@ -57,9 +59,11 @@ def get_deslib_techniques(rng_seed):
     deslib_techniques = {
         # DCS Methods
         "DCS.APosteriori": {"technique": APosteriori,
-                            "technique_args": {"random_state": RandomState(rng_seed), "n_jobs": -1}},
+                            "technique_args": {"random_state": RandomState(rng_seed), "n_jobs": -1},
+                            "probability_calibration": "auto"},
         "DCS.APriori": {"technique": APriori,
-                        "technique_args": {"random_state": RandomState(rng_seed), "n_jobs": -1}},
+                        "technique_args": {"random_state": RandomState(rng_seed), "n_jobs": -1},
+                        "probability_calibration": "auto"},
         "DCS.LCA": {"technique": LCA,
                     "technique_args": {"random_state": RandomState(rng_seed), "n_jobs": -1}},
         "DCS.MCB": {"technique": MCB,
@@ -130,7 +134,8 @@ def get_autosklearn_techniques(rng_seed):
             "technique_args": {"ensemble_size": 50,
                                "metric": OpenMLAUROC(),  # Please be aware, AUROC is very inefficient
                                "bagging": False, "mode": "fast",
-                               "random_state": RandomState(rng_seed)}
+                               "random_state": RandomState(rng_seed)},
+            "probability_calibration": "auto"
         }
     }
 
@@ -143,40 +148,32 @@ def get_autosklearn_techniques(rng_seed):
 
 def get_custom_techniques(rng_seed):
     new_techniques = {
-        "custom.DSEmpiricalPerformanceModel.DES.v": {
-            "technique": DSEmpiricalPerformanceModel,
-            "technique_args": {"epm": RandomForestRegressor(random_state=RandomState(rng_seed), n_jobs=-1),
-                               "epm_error": "predict_proba",
-                               "ensemble_selection": True, "ensemble_combination_method": "voting"}
-        },
-        "custom.DSEmpiricalPerformanceModel.DES.sv": {
-            "technique": DSEmpiricalPerformanceModel,
-            "technique_args": {"epm": RandomForestRegressor(random_state=RandomState(rng_seed), n_jobs=-1),
-                               "epm_error": "predict_proba",
-                               "ensemble_selection": True, "ensemble_combination_method": "soft_voting"}
-        },
         "custom.DSEmpiricalPerformanceModel.DES.wsv": {
             "technique": DSEmpiricalPerformanceModel,
             "technique_args": {"epm": RandomForestRegressor(random_state=RandomState(rng_seed), n_jobs=-1),
                                "epm_error": "predict_proba",
-                               "ensemble_selection": True, "ensemble_combination_method": "weighted_soft_voting"}
+                               "ensemble_selection": True, "ensemble_combination_method": "weighted_soft_voting"},
+            "probability_calibration": "auto"
         },
         "custom.DSEmpiricalPerformanceModel.DCS": {
             "technique": DSEmpiricalPerformanceModel,
             "technique_args": {"epm": RandomForestRegressor(random_state=RandomState(rng_seed), n_jobs=-1),
-                               "epm_error": "predict_proba"}
+                               "epm_error": "predict_proba"},
+            "probability_calibration": "auto"
         },
     }
     baselines = {
         "custom.VirtualBest": {
             "technique": VirtualBest,
             "technique_args": {"handle_no_correct": True},
-            "oracle": True
+            "oracle": True,
+            "probability_calibration": "auto"
         },
         "custom.SingleBest": {
             "technique": SingleBest,
             "technique_args": {"metric": OpenMLAUROC(),  # Please be aware, AUROC is very inefficient
-                               "predict_method": "predict_proba"}
+                               "predict_method": "predict_proba"},
+            "probability_calibration": "auto"
         }
     }
     custom_techniques = {**new_techniques, **baselines}
