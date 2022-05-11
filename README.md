@@ -140,10 +140,10 @@ the actual prediction of a base model.
 If you execute python scripts from the CLI (and not from an IDE) outside the root directory, the imports might not work.
 To avoid this, add the root directory to the PYTHONPATH (one possible solution).
 
-For example, to time the execution of the `example_cralwer.py` while being in the `examples` directory:
+For example, to time the execution of the `example_rebuild_benchmark_data.py` while being in the `examples` directory:
 
 ```bash
-time PYTHONPATH=~/path-to/assembled-openml python example_crawler.py 
+time PYTHONPATH=~/path-to/assembled python example_rebuild_benchmark_data.py 
 ```
 
 ## Problems with Implementations of Ensemble Techniques
