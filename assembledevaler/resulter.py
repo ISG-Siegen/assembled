@@ -92,6 +92,10 @@ class Resulter:
         for mt_id in self.metatask_ids:
             mt_res = self.read_benchmark_output_for_metatask(mt_id)
 
+            # Quick Sanity Check
+            if mt_res.isnull().values.any():
+                raise ValueError("Some NAN Value in Result data for Metatask ID: {}".format(mt_id))
+
             # Get Performance (cols: Fold,technique 1, technique 2, ...)
             mt_res = mt_res.groupby("Fold").apply(fold_data_to_performance).reset_index()
 
@@ -155,7 +159,7 @@ class Resulter:
             m_sb = fold_dataset_group.loc[fold_dataset_group["Ensemble Technique"] == sb_name, metric_name].iloc[0]
 
             def ri(x):
-                return x / m_sb - 1
+                return x / m_sb - 1  # is the same as: (x - m_sb) / m_sb
 
             fold_dataset_group["RI_SB"] = fold_dataset_group["AUROC"].apply(ri)
             return fold_dataset_group
