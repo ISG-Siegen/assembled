@@ -555,7 +555,7 @@ class MetaTask:
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
                                   label_encoder=False, fit_technique_on_original_data=False,
                                   preprocessor=None, output_file_path=None, oracle=False,
-                                  probability_calibration="no"):
+                                  probability_calibration="no", return_scores: Optional[Callable] = None):
         """Run an ensemble technique on all folds and return the results
 
         The current implementation builds fake base models by default such that we can evaluate methods this way.
@@ -606,12 +606,15 @@ class MetaTask:
             cross_val_predictions by our Faked Base Models.
             If pre_fit_base_models is True, CalibratedClassifierCV is employed with cv="prefit" beforehand such that
             we "replace" the base models with calibrated base models.
+        return_scores: Callable, default=None
+            If the evaluation shall return the scores for each fold. If not None, a metric function is expected.
         """
         # TODO -- Parameter Preprocessing / Checking
         #   Add safety check for file path here or something
         #   Check if probability_calibration has correct string names
 
         # -- Iterate over Folds
+        fold_scores = []
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
 
             # -- Get Data from Metatask
@@ -653,6 +656,14 @@ class MetaTask:
                 y_pred_ensemble_model = ensemble_model.predict(X_meta_test)
 
             self._save_fold_results(y_meta_test, y_pred_ensemble_model, idx, output_file_path, technique_name)
+
+            # -- Save scores for return
+            if return_scores is not None:
+                fold_scores.append(return_scores(y_meta_test, y_pred_ensemble_model))
+
+        # -- Return Score
+        if return_scores is not None:
+            return fold_scores
 
     # ---- Experimental Functions
     def _exp_get_base_models_for_all_folds(self, pre_fit_base_models: bool = False,

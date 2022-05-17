@@ -15,7 +15,7 @@ Currently, its main features are:
   code.
 * **Assembled-OpenML**: an extension of Assembled to fill build metatasks with data from OpenML (its original design).
 
-Currently, is main use-cases are/is:
+Currently, is main use-cases are:
 
 * Ensembles After AutoML (Post-Processing)
 
@@ -23,7 +23,7 @@ This repository/branch also contains the Assembled-OpenML extension.
 
 ## Assembled-OpenML
 
-_For the code of the workshop paper on Assembled-OpenML, see the `automl_workshop_paper` branch_
+_For the original code of the workshop paper on Assembled-OpenML, see the `automl_workshop_paper` branch_
 
 Assembled-OpenML builds Metatasks from OpenML. In this first version of Assembled-OpenML, the predictions correspond to
 the top-n best runs (configurations) of an OpenML task. It shall simulate the use case of post-processing an AutoML
@@ -48,26 +48,57 @@ In the environment execute from the project root:
 pip install -r requirements.txt
 ```
 
-If you only want to use the -Evaler or -OpenML extensions, you can also only install the requirements for these
-extensions by using the `requirements.txt` in their respective subdirectories.
+Please be aware that any relevant-enough subdirectory keeps track of its own requirements through a `requirements.txt`.
+Hence, if you want to use only parts of this project, it might be a better idea to only install the requirements of the
+code that you want to use.
 
 ## Usage
 
-To see the example usage of Assembled-OpenML and Assembled-Evaler, see the `./examples/` directory.
+To see the example usage of Assembled-OpenML, see the `./examples/` directory for code examples and more details.
 
 A simple example of using Assembled-OpenML is:
 
 ```python
 from assembledopenml.openml_assembler import OpenMLAssembler
 
-omlc = OpenMLAssembler(nr_base_models=50)
-meta_task = omlc.run(openml_task_id=3)  # Build a metatask for the OpenML task with ID 3 
-meta_task.to_files()  # Store the meta-dataset 
+omla = OpenMLAssembler(nr_base_models=50)
+meta_task = omla.run(openml_task_id=3)  # Build a metatask for the OpenML task with ID 3 
+meta_task.to_files("results/metatasks")  # Store the meta-dataset 
 ```
 
-To use Assembled-Evaler, a benchmark must have been run first, see `example_run_benchmark.py` and
-`example_rebuild_benchmark_data.py`. Afterwards, see `example_evaluation_and_analysis.py` to run our pre-defined
-evaluation code.
+A simple example of evaluating auto-sklearn's ensemble selection with a Metatask is:
+
+```python
+from assembled.metatask import MetaTask
+from assembledopenml.compatibility.openml_metrics import OpenMLAUROC
+from numpy.random import RandomState
+from results.data_utils import get_default_preprocessing
+
+# Import an adapted version of auto-sklearn's Ensemble Selection 
+# (basically a wrapper since the original implementation only works with predictions and not base models)
+from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
+
+mt = MetaTask()
+# We assume here, that the metatask files for task ID 3 exist. Alternatively, call omla.run(openml_task_id=3) first.
+mt.read_metatask_from_files("results/metatasks", 3)
+
+# Define the ensemble technique (arguments)
+technique_run_args = {"ensemble_size": 50,
+                      "metric": OpenMLAUROC(),  # Please be aware, AUROC is very inefficient
+                      "random_state": RandomState(0)
+                      }
+
+fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
+                                           pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                           meta_train_test_split_fraction=0.5, meta_train_test_split_random_state=0,
+                                           return_scores=OpenMLAUROC())
+print(fold_scores)
+print("Average Performance:", sum(fold_scores) / len(fold_scores))
+```
+
+To re-use our evaluation code, coined Assembled-Evaler for now, a benchmark must have been run first,
+see `example_run_benchmark.py` and `example_rebuild_benchmark_data.py`. Afterwards,
+see `example_evaluation_and_analysis.py` to run our pre-defined evaluation code.
 
 ## Limitations
 

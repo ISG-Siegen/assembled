@@ -25,7 +25,7 @@ task_ids_to_valid_predictors = benchmark_meta_data["task_ids_to_valid_predictors
 selection_constraints = benchmark_meta_data["selection_constraints"]
 
 # -- Crawl Original Metatask and remove non-valid predictors
-omlc = OpenMLAssembler(openml_metric_name=selection_constraints["openml_metric_name"],
+omla = OpenMLAssembler(openml_metric_name=selection_constraints["openml_metric_name"],
                        maximize_metric=selection_constraints["maximize_metric"],
                        nr_base_models=selection_constraints["nr_base_models"])
 
@@ -35,7 +35,7 @@ for task_nr, task_id in enumerate(valid_task_ids, start=1):
 
     # Crawl Metatask
     valid_predictors = task_ids_to_valid_predictors[str(task_id)]
-    mt = omlc.rebuild(task_id, valid_predictors)
+    mt = omla.rebuild(task_id, valid_predictors)
 
     # Store to file
     mt.to_files("../results/benchmark_metatasks")

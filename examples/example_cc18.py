@@ -12,12 +12,12 @@ tasks = openml.tasks.list_tasks(tag="OpenML-CC18", output_format="dataframe")
 task_list = tasks["tid"].tolist()  # or just use: [3, 6, 11, 12, 14, 15]
 
 # -- Init Crawler
-omlc = OpenMLAssembler(openml_metric_name="area_under_roc_curve", maximize_metric=True, nr_base_models=50)
+omla = OpenMLAssembler(openml_metric_name="area_under_roc_curve", maximize_metric=True, nr_base_models=50)
 
 # -- Iterate over the task and crawl/build their metatasks
 
 for t_idx, task_id in enumerate(task_list, 1):
     # Build meta-dataset for each task
     print("####### Process Task {} ({}/{}) #######".format(task_id, t_idx, len(task_list)))
-    meta_task = omlc.run(task_id)
+    meta_task = omla.run(task_id)
     meta_task.to_files(output_dir="../results/metatasks")

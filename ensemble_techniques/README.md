@@ -1,7 +1,7 @@
 # Assembled's Supported Ensemble Techniques
 
 This directory contains all supported ensemble techniques as well as code to enable their usage. The code for the
-FakedClassifiers and other compatability utilities can be found in the `assembledopenml` directory.
+FakedClassifiers and other compatability utilities can be found in the `assembled` directory.
 
 The file `collect_ensemble_techniques.py` contains the code to invoke the ensemble technique and the parameters passed
 to the ensemble technique at run time. Moreover, we include additional parameters required by
@@ -35,10 +35,7 @@ We support the following Ensemble Techniques through FakedClassifiers:
   workarounds for our faked base models. However, Stacking also wants to employ cross_val_predict on the base models. We
   can not support this for the faked base models, as the data from OpenML and their theoretical concept both do not
   support this. Hence, we created our own versions of stacking and voting where we can pass already fitted base models.
-  Furthermore, for stacking we added the possibility to use blending (training the final_estimator without
-  cross_vaL_predictions).
-    * In the future, we might want to enable that we simply pass what data is used to train for the final_estimator of
-      stacking.
+  Furthermore, for stacking we added the possibility to pass data such that it is only used to train final_estimator.
     * Technically ,we can support the usage of cross_val_preds as is with our faked base models. This would result in
       blending behavior without chaining the code of stacking. This however becomes very problematic once you want to
       add things like base model calibration.
@@ -73,4 +70,4 @@ We support the following Ensemble Techniques through FakedClassifiers:
 
 * Please be aware, adding calibration to the base models increases the overhead for fit and predict. Especially if the
   ensemble techniques can not work with pre-fitted models. Consider the following, adding calibration is like adding
-  another model for each base model (on-the-fly or during pre-processing). 
+  another wrapper model for each base model (on-the-fly or during pre-processing). 
