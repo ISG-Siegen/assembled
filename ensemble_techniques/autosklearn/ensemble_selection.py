@@ -41,13 +41,15 @@ class EnsembleSelection(AbstractEnsemble):
     """
 
     def __init__(self, base_models: List[Callable], ensemble_size: int, metric: AbstractMetric, bagging: bool = False,
-                 mode: str = 'fast', random_state: Optional[Union[int, np.random.RandomState]] = None) -> None:
+                 mode: str = 'fast', random_state: Optional[Union[int, np.random.RandomState]] = None,
+                 use_best: bool = False) -> None:
 
         super().__init__(base_models, "predict_proba", "predict_proba")
         self.ensemble_size = ensemble_size
         self.metric = metric
         self.bagging = bagging
         self.mode = mode
+        self.use_best = use_best
 
         # Behaviour similar to sklearn
         #   int - Deteriministic with succesive calls to fit
@@ -133,7 +135,7 @@ class EnsembleSelection(AbstractEnsemble):
                     out=fant_ensemble_prediction
                 )
 
-                losses[j] = self.metric(labels, None, fant_ensemble_prediction)
+                losses[j] = self.metric.to_loss(self.metric(labels, None, fant_ensemble_prediction))
 
             all_best = np.argwhere(losses == np.nanmin(losses)).flatten()
 
@@ -150,6 +152,7 @@ class EnsembleSelection(AbstractEnsemble):
         self.indices_ = order
         self.trajectory_ = trajectory
         self.train_loss_ = trajectory[-1]
+        self.apply_use_best()
 
     def _slow(self, predictions: List[np.ndarray], labels: np.ndarray) -> None:
         """Rich Caruana's ensemble selection method."""
@@ -171,7 +174,7 @@ class EnsembleSelection(AbstractEnsemble):
                 ensemble_prediction = np.mean(np.array(ensemble), axis=0)
                 # calculate_loss is versatile and can return a dict of losses
                 # when scoring_functions=None, we know it will be a float
-                losses[j] = self.metric(labels, None, ensemble_prediction)
+                losses[j] = self.metric.to_loss(self.metric(labels, None, ensemble_prediction))
                 ensemble.pop()
 
             best = np.nanargmin(losses)
@@ -191,7 +194,19 @@ class EnsembleSelection(AbstractEnsemble):
             trajectory,
             dtype=np.float64,
         )
-        self.train_loss_ = trajectory[-1]
+        self.apply_use_best()
+
+    def apply_use_best(self):
+        if self.use_best:
+            # Basically from autogluon the code
+            min_score = np.min(self.trajectory_)
+            idx_best = self.trajectory_.index(min_score)
+            self.indices_ = self.indices_[:idx_best + 1]
+            self.trajectory_ = self.trajectory_[:idx_best + 1]
+            self.ensemble_size = idx_best + 1
+            self.train_loss_ = self.trajectory_[idx_best]
+        else:
+            self.train_score_ = self.trajectory_[-1]
 
     def _calculate_weights(self) -> None:
         ensemble_members = Counter(self.indices_).most_common()

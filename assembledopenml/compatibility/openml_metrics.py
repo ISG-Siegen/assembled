@@ -86,3 +86,7 @@ class OpenMLAUROC(AbstractMetric):
 
         return roc_auc_score(y_true_bin, y_conf_to_use, multi_class="ovr", average="weighted",
                              labels=self.classes_)
+
+    def to_loss(self, metric_value):
+        """For now simply take the negative to get a loss. I do not understand the range of AUROC currently..."""
+        return -metric_value
