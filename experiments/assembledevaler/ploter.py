@@ -1,5 +1,5 @@
 import os
-from assembledevaler.plots.stripplots import draw_stripplot
+from experiments.assembledevaler.plots.stripplots import draw_stripplot
 import matplotlib.pyplot as plt
 from autorank import plot_stats
 
