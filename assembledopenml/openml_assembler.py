@@ -9,10 +9,10 @@ from typing import List, OrderedDict
 import re
 
 
-class OpenMLCrawler:
+class OpenMLAssembler:
     def __init__(self, openml_metric_name: str = "area_under_roc_curve", maximize_metric: bool = True,
                  nr_base_models: int = 50):
-        """A Crawler for OpenML that collects top-performing runs (configurations) for a task ID.
+        """A wrapper for OpenML that collects top-performing runs (configurations) for a task ID.
 
         Parameters
         ----------
@@ -65,7 +65,7 @@ class OpenMLCrawler:
             self.top_n.append(MetaFlow(openml_evaluation.flow_id, openml_evaluation.flow_name, eval_perf,
                                        openml_evaluation.run_id))
 
-    def _crawl_and_filter_runs(self, openml_task_id: int):
+    def _collect_and_filter_runs(self, openml_task_id: int):
         """Collect Runs for the task based on the filter setting specified in the initialization."""
         sort_order = "desc" if self.maximize_metric else "asc"
         offset = 0
@@ -127,7 +127,7 @@ class OpenMLCrawler:
                 raise ValueError("Non-unique run-flow combination: {}".format(key))
             combinations_seen.add(key)
 
-    def _reset_crawler(self):
+    def _reset(self):
         self.top_n = []
         self.setup_ids = set()
 
@@ -224,7 +224,7 @@ class OpenMLCrawler:
         return meta_task
 
     def run(self, openml_task_id: int) -> MetaTask:
-        """Crawl OpenML for valid runs and their predictions.
+        """Search through OpenML for valid runs and their predictions.
 
         Parameters
         ----------
@@ -234,23 +234,23 @@ class OpenMLCrawler:
         Returns
         -------
         meta_task: MetaTask
-            A Metatask created based on the crawler's settings for the OpenML Task provided as input
+            A Metatask created based on the collector's settings for the OpenML Task provided as input
         """
-        # -- Crawl OpenML Task and build metatask
+        # -- Get OpenML Task and build metatask
         task = openml.tasks.get_task(openml_task_id)
         meta_task = MetaTask()
         meta_task = self._init_dataset_from_task(meta_task, task)
 
-        # -- Crawl Configurations
-        self._crawl_and_filter_runs(openml_task_id)
+        # -- Collect Configurations
+        self._collect_and_filter_runs(openml_task_id)
         print("We have found {} base models.".format(len(self.top_n)))
         meta_task = self._init_base_models_from_metaflows(meta_task, self.top_n)
 
         # -- Fill selection constraints data
         meta_task.read_selection_constraints(self.openml_metric_name, self.maximize_metric, self.nr_base_models)
 
-        # -- Rest such that crawler can be re-used
-        self._reset_crawler()
+        # -- Rest such that .run() can be re-used
+        self._reset()
 
         return meta_task
 
@@ -267,10 +267,10 @@ class OpenMLCrawler:
         Returns
         -------
         meta_task: MetaTask
-            A Metatask created based on the crawler's settings for the OpenML Task provided as input
+            A Metatask created based on the collector's settings for the OpenML Task provided as input
         """
 
-        # -- Crawl OpenML Task and build metatask
+        # -- Get OpenML Task and build metatask
         task = openml.tasks.get_task(openml_task_id)
         meta_task = MetaTask()
         self._init_dataset_from_task(meta_task, task)

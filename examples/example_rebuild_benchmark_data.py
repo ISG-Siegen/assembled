@@ -13,7 +13,7 @@ metatasks first.
 import os
 import json
 
-from assembledopenml.openml_crawler import OpenMLCrawler
+from assembledopenml.openml_assembler import OpenMLAssembler
 
 # -- Read Benchmark Details
 file_path_json = os.path.join("../results/benchmark_metatasks", "benchmark_details.json")
@@ -25,9 +25,9 @@ task_ids_to_valid_predictors = benchmark_meta_data["task_ids_to_valid_predictors
 selection_constraints = benchmark_meta_data["selection_constraints"]
 
 # -- Crawl Original Metatask and remove non-valid predictors
-omlc = OpenMLCrawler(openml_metric_name=selection_constraints["openml_metric_name"],
-                     maximize_metric=selection_constraints["maximize_metric"],
-                     nr_base_models=selection_constraints["nr_base_models"])
+omlc = OpenMLAssembler(openml_metric_name=selection_constraints["openml_metric_name"],
+                       maximize_metric=selection_constraints["maximize_metric"],
+                       nr_base_models=selection_constraints["nr_base_models"])
 
 nr_tasks = len(valid_task_ids)
 for task_nr, task_id in enumerate(valid_task_ids, start=1):
