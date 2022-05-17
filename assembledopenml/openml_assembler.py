@@ -152,9 +152,9 @@ class OpenMLAssembler:
         feature_names.remove(target_name)  # Remove only afterwards, as indicator includes class
         task_id = openml_task.task_id
 
-        if openml_task.task_type_id == 1:
+        if openml_task.task_type_id is openml.tasks.TaskType.SUPERVISED_CLASSIFICATION:
             task_type = "classification"
-        elif openml_task.task_type_id == 2:
+        elif openml_task.task_type_id == openml.tasks.TaskType.SUPERVISED_REGRESSION:
             task_type = "regression"
         else:
             raise ValueError("Unknown or not supported openml task type id: {}".format(openml_task.task_type_id))
