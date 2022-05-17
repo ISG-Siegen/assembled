@@ -696,7 +696,7 @@ class MetaTask:
     def _exp_yield_evaluation_data_across_folds(self, meta_train_test_split_fraction,
                                                 meta_train_test_split_random_state,
                                                 pre_fit_base_models, base_models_with_names, label_encoder,
-                                                preprocessor):
+                                                preprocessor, include_test_data=False):
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
             X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
             X_test, y_test, test_base_predictions, test_base_confidences = self.split_meta_dataset(test_metadata)
@@ -714,4 +714,13 @@ class MetaTask:
                                                  test_base_confidences, pre_fit_base_models, base_models_with_names,
                                                  label_encoder)
 
-            yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test
+            if include_test_data:
+                assert_meta_train_pred, assert_meta_test_pred, assert_meta_train_conf, \
+                assert_meta_test_conf = train_test_split(test_base_predictions, test_base_confidences,
+                                                         test_size=meta_train_test_split_fraction,
+                                                         random_state=meta_train_test_split_random_state,
+                                                         stratify=y_test)
+                yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test, assert_meta_train_pred, \
+                      assert_meta_test_pred, assert_meta_train_conf, assert_meta_test_conf, X_train, y_train
+            else:
+                yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test

@@ -153,6 +153,22 @@ technique's initialization).
 Please consult the first version of Assembled-OpenML (see the other branches) to see an alternative on how to use/create
 a benchmark of ensemble techniques that works with the data directly instead of base models.
 
+# For Developers
+
+This section is very much work in progress...
+
+## Unit Tests
+We use [py.test](https://docs.pytest.org/en/latest/) for unit testing. 
+
+After installing it, while in the root directory (and in the current environment), call:
+
+```bash
+python -m pytest tests/
+```
+
+Currently, the test are slow because we first need to build metatasks before testing some of our code.
+Unsure how to fix this so far, perhaps need to add special constructor for tests in the future. 
+
 # Known Issues
 
 ## Confidence Values (Equal, ...)
