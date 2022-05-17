@@ -38,7 +38,7 @@ def get_sklearn_techniques(rng_seed):
             "technique": StackingClassifier,
             "technique_args": {"final_estimator": LogisticRegression(random_state=RandomState(rng_seed), n_jobs=-1),
                                # "n_jobs": -1
-                               "prefitted": True, "blending": True
+                               "prefitted": True, "only_fit_final_estimator": True
                                },
             "probability_calibration": "auto",
             "pre_fit_base_models": True
@@ -47,7 +47,7 @@ def get_sklearn_techniques(rng_seed):
             "technique": StackingClassifier,
             "technique_args": {"final_estimator": RandomForestClassifier(random_state=RandomState(rng_seed), n_jobs=-1),
                                # "n_jobs": -1
-                               "prefitted": True, "blending": True
+                               "prefitted": True, "only_fit_final_estimator": True
                                },
             "probability_calibration": "auto",
             "pre_fit_base_models": True

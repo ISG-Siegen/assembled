@@ -59,6 +59,7 @@ class Ploter:
 
         fig, ax = plt.subplots(figsize=(12, 8))
         plot_stats(autorank_results, ax=ax)
+        plt.title("Autorank Plot for Metric{}".format(ext))
         plt.tight_layout()
         plt.savefig(fig_save_path, bbox_inches="tight")
         plt.show()

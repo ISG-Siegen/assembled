@@ -50,7 +50,7 @@ class _BaseStacking(TransformerMixin, _BaseHeterogeneousEnsemble, metaclass=ABCM
             verbose=0,
             passthrough=False,
             prefitted=False,
-            blending=False,
+            only_fit_final_estimator=False,
     ):
         super().__init__(estimators=estimators)
         self.final_estimator = final_estimator
@@ -60,7 +60,7 @@ class _BaseStacking(TransformerMixin, _BaseHeterogeneousEnsemble, metaclass=ABCM
         self.verbose = verbose
         self.passthrough = passthrough
         self.prefitted = prefitted
-        self.blending = blending
+        self.only_fit_final_estimator = only_fit_final_estimator
 
     def _clone_final_estimator(self, default):
         if self.final_estimator is not None:
@@ -149,6 +149,11 @@ class _BaseStacking(TransformerMixin, _BaseHeterogeneousEnsemble, metaclass=ABCM
         -------
         self : object
         """
+
+        if self.only_fit_final_estimator and (not self.prefitted):
+            raise ValueError("We require the models to be prefitted to only fit the final estimaotr on the input data."
+                             " Got prefitted = {}".format(self.prefitted))
+
         # all_estimators contains all estimators, the one to be fitted and the
         # 'drop' string.
         names, all_estimators = self._validate_estimators()
@@ -194,7 +199,7 @@ class _BaseStacking(TransformerMixin, _BaseHeterogeneousEnsemble, metaclass=ABCM
             {"sample_weight": sample_weight} if sample_weight is not None else None
         )
 
-        if self.blending:
+        if self.only_fit_final_estimator:
             predictions = [
                 getattr(est, meth)(X)
                 for est, meth in zip(self.estimators_, self.stack_method_)
@@ -378,9 +383,11 @@ class StackingClassifier(ClassifierMixin, _BaseStacking):
     prefitted: bool, default=False
         When True, the estimators are not fitted again and assumbed to be already fitted.
 
-    blending: bool, default=False
+    only_fit_final_estimator: bool, default=False
         When True, we fit the final_estimator on the predictions of the input data instead of computing
-        the cross fold predictions for it. Ignores all cv-related stuff from above.
+        the cross fold predictions for it. Ignores all cv-related stuff from above. Requires prefitted=True.
+        When True, the user needs to make sure that the data used for training the estimaotrs is distinct form the data
+        passed to fit to avoid information leakage.
 
     verbose : int, default=0
         Verbosity level.
@@ -468,7 +475,7 @@ class StackingClassifier(ClassifierMixin, _BaseStacking):
             n_jobs=None,
             passthrough=False,
             prefitted=False,
-            blending=False,
+            only_fit_final_estimator=False,
             verbose=0,
     ):
         super().__init__(
@@ -480,7 +487,7 @@ class StackingClassifier(ClassifierMixin, _BaseStacking):
             passthrough=passthrough,
             verbose=verbose,
             prefitted=prefitted,
-            blending=blending
+            only_fit_final_estimator=only_fit_final_estimator
         )
 
     def _validate_final_estimator(self):

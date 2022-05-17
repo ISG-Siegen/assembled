@@ -28,22 +28,19 @@ if __name__ == "__main__":
     # plter.stripplot(fp_data, metric_to_plot=metric_name)
     # plter.stripplot(fp_data, metric_to_plot=metric_name, split=True)
 
-    # # ---- Finding the Average Best Method
-    # # -- Wins / Ties / Losses
-    # evler.wins_ties_losses(fp_data, metric_name, metric_maximize=True)
+    # ---- Finding the Average Best Method
+    # -- Wins / Ties / Losses
+    evler.wins_ties_losses(fp_data, metric_name, metric_maximize=True)
 
-    # # -- Overall Ranking Stuff
-    # # - Raw metric ranking
-    # autorank_results = evler.use_autorank(fp_data, metric_name, metric_maximize=True)
-    # plter.autorank_plot(autorank_results, ext="_{}".format(metric.name))
+    # -- Mean
+    evler.simple_mean(fp_data, "RI_SB", metric_maximize=True)
 
-    # # - Normalized Ranking + Aggregate
-    # # fixes a bug with autorank by converting it to a minimization problem
-    # anti_bug_data = fp_data.copy()
-    # anti_bug_data["VB_SB_GAP"] *= -1
-    # anti_bug_data["RI_SB"] *= -1
-    # autorank_results = evler.use_autorank(anti_bug_data, "VB_SB_GAP", metric_maximize=False)
-    # plter.autorank_plot(autorank_results, ext="_{}".format("VB_SB_GAP"))
-    # autorank_results = evler.use_autorank(anti_bug_data, "RI_SB", metric_maximize=False, keep_vb=True)
-    # plter.autorank_plot(autorank_results, ext="_{}".format("RI_SB"))
-    # evler.simple_mean(fp_data, "RI_SB", metric_maximize=True)
+    # -- Overall Ranking Stuff
+    autorank_results = evler.use_autorank(fp_data, metric_name, metric_maximize=False)
+    plter.autorank_plot(autorank_results, ext="_{}".format(metric.name))
+
+    # fixes a bug with autorank by converting it to a minimization problem
+    anti_bug_data = fp_data.copy()
+    anti_bug_data["RI_SB"] *= -1
+    autorank_results = evler.use_autorank(anti_bug_data, "RI_SB", metric_maximize=False, keep_vb=False)
+    plter.autorank_plot(autorank_results, ext="_{}".format("RI_SB"))
