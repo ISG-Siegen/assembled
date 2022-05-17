@@ -1,4 +1,4 @@
-from assembledopenml.metatask import MetaTask
+from assembled.metatask import MetaTask
 from results.data_utils import get_valid_benchmark_ids
 from ensemble_techniques.collect_ensemble_techniques import get_benchmark_techniques
 

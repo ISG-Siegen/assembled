@@ -2,8 +2,8 @@ import numpy as np
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
-from assembledopenml.metatask import MetaTask
-from assembledopenml.compatibility.faked_classifier import FakedClassifier
+from assembled.metatask import MetaTask
+from assembled.compatibility.faked_classifier import FakedClassifier
 from results.data_utils import get_default_preprocessing
 
 if __name__ == "__main__":

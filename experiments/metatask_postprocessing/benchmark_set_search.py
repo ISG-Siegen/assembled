@@ -12,7 +12,7 @@ from statistics import mean
 from itertools import chain
 from collections import Counter
 
-from assembledopenml.metatask import MetaTask
+from assembled.metatask import MetaTask
 from results.data_utils import get_id_and_validate_existing_data
 from experiments.metatask_postprocessing.old_baselines_code import VirtualBestAlgorithm, SingleBestAlgorithm
 from assembledopenml.compatibility.openml_metrics import OpenMLAUROC

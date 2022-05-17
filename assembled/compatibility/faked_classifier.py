@@ -1,8 +1,11 @@
 import time
 import numpy as np
+import pandas as pd
+
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted, check_array, _check_y
 from sklearn.preprocessing import LabelEncoder
+from sklearn.calibration import CalibratedClassifierCV
 
 
 class FakedClassifier(BaseEstimator, ClassifierMixin):
@@ -271,3 +274,80 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
     def _generate_index_from_row(x):
         # Currently "just" a hash and not a full checksum algorithm... might need to change this
         return hash(x.tobytes())  # Not consistent between runs (could not be stored), use hashlib for that
+
+
+# -- Additional Functions for FakedClassifiers Usage
+def initialize_fake_models(X_train, y_train, X_test, known_predictions, known_confidences, pre_fit_base_models,
+                           base_models_with_names, label_encoder):
+    # Expect the predictions/confidences on the whole meta-data as input. Whereby meta-data is the data passed to
+    #   the ensemble method.
+
+    faked_base_models = []
+
+    for model_name in list(known_predictions):  # known predictions is a dataframe
+        model_confidences = known_confidences[["confidence.{}.{}".format(class_name, model_name)
+                                               for class_name in np.unique(y_train)]]
+        model_predictions = known_predictions[model_name]
+        fc = FakedClassifier(X_test, model_predictions, model_confidences, label_encoder=label_encoder)
+
+        # -- Set fitted or not (sklearn vs. deslib)
+        if pre_fit_base_models:
+            if isinstance(X_train, pd.DataFrame) and isinstance(y_train, pd.Series):
+                fc.fit(X_train.to_numpy(), y_train.to_numpy())
+            elif isinstance(y_train, pd.Series):
+                fc.fit(X_train, y_train.to_numpy())
+            else:
+                raise ValueError("Unsupported Types for X_train or y_train: " +
+                                 "X_train type is {}; y_train type is {}".format(type(X_train), type(y_train)))
+
+        # -- Set result output (sklearn vs. deslib)
+        res = fc
+        if base_models_with_names:
+            res = (model_name, res)
+
+        faked_base_models.append(res)
+
+    return faked_base_models
+
+
+def probability_calibration_for_faked_models(base_models, X_meta_train, y_meta_train, probability_calibration_type,
+                                             pre_fit_base_models):
+    # -- Simply return base models without changes
+    if probability_calibration_type == "no":
+        return base_models
+
+    # -- Select calibration method
+    if probability_calibration_type != "auto":
+        # We assume the input has been validated and only "sigmoid", "isotonic" are possible options
+        cal_method = probability_calibration_type
+    else:
+        # TODO-FUTURE: perhaps add something that selects method based on base model types?
+
+        # Select method based on number of instances
+        cal_method = "isotonic" if len(y_meta_train) > 1100 else "sigmoid"
+
+    # --Build calibrated base models
+    cal_base_models = []
+    for bm_data in base_models:
+
+        # - Select the base model
+        if isinstance(bm_data, tuple):
+            bm = bm_data[1]
+        else:
+            bm = bm_data
+
+        # - Determine how to process the base models
+        if pre_fit_base_models:
+            cal_bm = CalibratedClassifierCV(bm, method=cal_method, cv="prefit").fit(X_meta_train, y_meta_train)
+        else:
+            # With cv=2 we have less overhead with fake base models.
+            # Once our current fake base model structure changes, we need to change this as well.
+            cal_bm = CalibratedClassifierCV(bm, method=cal_method, ensemble="False", cv=2)
+
+        # - Set base model
+        if isinstance(bm_data, tuple):
+            cal_base_models.append((bm_data[0], cal_bm))
+        else:
+            cal_base_models.append(cal_bm)
+
+    return cal_base_models

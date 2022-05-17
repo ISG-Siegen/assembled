@@ -1,8 +1,12 @@
 import openml
+import numpy as np
+import pandas as pd
+from openml.tasks import OpenMLTask
 
 from assembledopenml.metaflow import MetaFlow
-from assembledopenml.metatask import MetaTask
+from assembled.metatask import MetaTask
 from typing import List, OrderedDict
+import re
 
 
 class OpenMLCrawler:
@@ -89,11 +93,22 @@ class OpenMLCrawler:
         self._validate_top_n()
         print(len(self.top_n))
 
+    @staticmethod
+    def predictor_name_to_ids(pred_name):
+
+        if not re.match("^prediction_flow_\d*_run_\d*$", pred_name):
+            raise ValueError("Unknown Name format for the predictor: {}".format(pred_name))
+
+        # Split
+        _, flow_id, _, run_id = pred_name.rsplit("_", 3)
+
+        return int(flow_id), int(run_id)
+
     def _build_flows_for_predictors(self, valid_predictors: List[str]) -> List[MetaFlow]:
         meta_flows = []
 
         for predictor_name in valid_predictors:
-            flow_id, run_id = MetaTask.predictor_name_to_ids(predictor_name)
+            flow_id, run_id = self.predictor_name_to_ids(predictor_name)
             meta_flows.append(MetaFlow(flow_id, None, None, run_id))
 
         return meta_flows
@@ -116,6 +131,98 @@ class OpenMLCrawler:
         self.top_n = []
         self.setup_ids = set()
 
+    @staticmethod
+    def _init_dataset_from_task(meta_task: MetaTask, openml_task: OpenMLTask):
+        """ Fill the metatask's dataset using an initialized OpenMLTask
+
+        Parameters
+        ----------
+        openml_task : OpenMLTask
+            The OpenML Task object for which we shall build a metatask.
+        """
+        # -- Get relevant data from task
+        openml_dataset = openml_task.get_dataset()
+        dataset_name = openml_dataset.name
+        dataset, _, cat_indicator, feature_names = openml_dataset.get_data()
+        target_name = openml_task.target_name
+        class_labels = openml_task.class_labels
+        # - Get Cat feature names
+        cat_feature_names = [f_name for cat_i, f_name in zip(cat_indicator, feature_names) if
+                             (cat_i == 1) and (f_name != target_name)]
+        feature_names.remove(target_name)  # Remove only afterwards, as indicator includes class
+        task_id = openml_task.task_id
+
+        if openml_task.task_type_id == 1:
+            task_type = "classification"
+        elif openml_task.task_type_id == 2:
+            task_type = "regression"
+        else:
+            raise ValueError("Unknown or not supported openml task type id: {}".format(openml_task.task_type_id))
+
+        # - Handle Folds
+        openml_task.split = openml_task.download_split()
+        folds_indicator = np.empty(len(dataset))
+        for i in range(openml_task.split.folds):
+            # FIXME Ignores repetitions for now (only take first repetitions if multiple are available)
+            _, test = openml_task.get_train_test_split_indices(fold=i)
+            folds_indicator[test] = int(i)
+
+        # -- Fill object with values
+        meta_task.init_dataset_information(dataset, target_name, class_labels, feature_names, cat_feature_names,
+                                           task_type, task_id, folds_indicator, dataset_name)
+
+        return meta_task
+
+    @staticmethod
+    def _init_base_models_from_metaflows(meta_task: MetaTask, metaflows: List[MetaFlow]):
+        """Fill prediction data from a list of metaflow objects into a metatask object directly
+
+        TODO: refactor to calling a init function of meta_task and collecting data beforehand?
+
+        Parameters
+        ----------
+        metaflows : List[MetaFlow]
+            A list of metaflow object of which the prediction data shall be stored in the metatask
+        """
+
+        # For each flow, parse prediction and store it
+        for meta_flow in metaflows:
+            print("#### Process Flow {} + Run {} ####".format(meta_flow.flow_id, meta_flow.run_id))
+
+            # -- Setup Column Names for MetaDataset
+            col_name = "prediction_flow_{}_run_{}".format(meta_flow.flow_id, meta_flow.run_id)
+            conf_col_names = ["confidence.{}.{}".format(n, col_name) for n in meta_task.class_labels]
+            meta_flow.name = col_name
+
+            # -- Get predictions
+            meta_flow.get_predictions_data(meta_task.class_labels)
+
+            # - Check if file_y_ture is corrupted (and thus potentially the predictions)
+            if sum(meta_flow.file_ground_truth != meta_task.ground_truth) > 0:
+                # ground truth of original data differs to predictions file y_ture
+                # -> Store it and ignore it
+                meta_flow.file_ground_truth_corrupted = True
+
+            # -- Merge (this way because performance warning otherwise)
+            re_names = {meta_flow.confidences.columns[i]: n for i, n in enumerate(conf_col_names)}
+            meta_task.predictions_and_confidences = pd.concat([meta_task.predictions_and_confidences,
+                                                               meta_flow.predictions.rename(col_name),
+                                                               meta_flow.confidences.rename(re_names, axis=1)], axis=1)
+
+            # Add to relevant storage
+            meta_task.predictors.append(col_name)
+            meta_task.confidences.extend(conf_col_names)
+            meta_task.predictor_descriptions[col_name] = meta_flow.description
+            meta_task.found_confidence_prefixes.add(meta_flow.conf_prefix)
+
+        # Collect meta data about predictors
+        meta_task.bad_predictors.extend([mf.name for mf in metaflows if mf.is_bad_flow])
+        meta_task.predictor_corruptions_details.update({mf.name: mf.corruption_details for mf in metaflows
+                                                        if
+                                                        (mf.file_ground_truth_corrupted or mf.confidences_corrupted)})
+
+        return meta_task
+
     def run(self, openml_task_id: int) -> MetaTask:
         """Crawl OpenML for valid runs and their predictions.
 
@@ -132,12 +239,12 @@ class OpenMLCrawler:
         # -- Crawl OpenML Task and build metatask
         task = openml.tasks.get_task(openml_task_id)
         meta_task = MetaTask()
-        meta_task.read_dataset_from_task(task)
+        meta_task = self._init_dataset_from_task(meta_task, task)
 
         # -- Crawl Configurations
         self._crawl_and_filter_runs(openml_task_id)
         print("We have found {} base models.".format(len(self.top_n)))
-        meta_task.read_predictions_from_metaflows(self.top_n)
+        meta_task = self._init_base_models_from_metaflows(meta_task, self.top_n)
 
         # -- Fill selection constraints data
         meta_task.read_selection_constraints(self.openml_metric_name, self.maximize_metric, self.nr_base_models)
@@ -166,11 +273,11 @@ class OpenMLCrawler:
         # -- Crawl OpenML Task and build metatask
         task = openml.tasks.get_task(openml_task_id)
         meta_task = MetaTask()
-        meta_task.read_dataset_from_task(task)
+        self._init_dataset_from_task(meta_task, task)
 
         # -- Get predictor data and read into metatask
         valid_flows = self._build_flows_for_predictors(valid_predictors)
-        meta_task.read_predictions_from_metaflows(valid_flows)
+        meta_task = self._init_base_models_from_metaflows(meta_task, valid_flows)
 
         # -- Fill selection constraints data
         meta_task.read_selection_constraints(self.openml_metric_name, self.maximize_metric, self.nr_base_models)

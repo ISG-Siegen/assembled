@@ -1,4 +1,4 @@
-from assembledopenml.metatask import MetaTask
+from assembled.metatask import MetaTask
 from results.data_utils import get_valid_benchmark_ids, get_default_preprocessing
 
 from experiments.probability_calibration.calibration_stuff import calibration_curves
@@ -28,7 +28,7 @@ if __name__ == "__main__":
         calibration_curves(base_models, X_test, y_test, mt)
 
         # -- Just for one fold
-        for base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test in mt._exp_yield_base_models_across_folds(
+        for base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test in mt._exp_yield_evaluation_data_across_folds(
                 test_split_frac, test_split_rng, preprocessor=get_default_preprocessing(),
                 pre_fit_base_models=True, base_models_with_names=True, label_encoder=False):
 

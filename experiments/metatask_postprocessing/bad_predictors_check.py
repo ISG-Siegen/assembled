@@ -5,7 +5,7 @@ This might be helpful to explore the problems of OpenML prediction data in the f
 """
 
 from results.data_utils import get_id_and_validate_existing_data
-from assembledopenml.metatask import MetaTask
+from assembled.metatask import MetaTask
 from assembledopenml.metaflow import MetaFlow
 import pandas as pd
 from tabulate import tabulate
