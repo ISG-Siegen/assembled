@@ -11,7 +11,8 @@ from assembledopenml.openml_assembler import OpenMLAssembler
 tasks = openml.tasks.list_tasks(tag="OpenML-CC18", output_format="dataframe")
 task_list = tasks["tid"].tolist()  # or just use: [3, 6, 11, 12, 14, 15]
 
-# -- Init Crawler
+# -- Init Assembler
+# The settings of the OpenMLAssembler make us look for the top 50 base models based on the metric area_under_roc_curve
 omla = OpenMLAssembler(openml_metric_name="area_under_roc_curve", maximize_metric=True, nr_base_models=50)
 
 # -- Iterate over the task and crawl/build their metatasks

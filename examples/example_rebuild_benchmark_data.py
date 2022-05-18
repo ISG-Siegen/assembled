@@ -2,7 +2,7 @@
 
 The following examples show how to re-build a benchmark using the benchmark metadata provided by us.
 
-The metatasks that this script creates, contain the results of post-processing all meta-tasks crawled using
+The metatasks that this script creates, contain the results of post-processing all meta-tasks obtained using
 the tag "OpenML-CC18".
 
 We will store these benchmark metatasks in their own directory.
