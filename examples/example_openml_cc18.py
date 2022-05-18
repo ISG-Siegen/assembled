@@ -1,4 +1,4 @@
-""" Cralwer Example for OpenML-CC18
+""" Example for OpenML-CC18
 
 The following examples show how to use the code of Assembled-OpenML for a set of OpenML task IDs based on a tag
 """

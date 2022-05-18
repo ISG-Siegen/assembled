@@ -35,7 +35,6 @@ class MetaTask:
         self.predictors = []  # List of predictor names (aka base models)
         self.predictor_descriptions = {}  # Predictor names to descriptions (description could be the configuration)
         self.bad_predictors = []  # List of predictor names that have ill-formatted predictions or wrong data
-        self.found_confidence_prefixes = set()
         self.predictor_corruptions_details = {}
         self.confidences = []  # List of column names of confidences
 
@@ -44,6 +43,7 @@ class MetaTask:
 
         # -- Other
         self.supported_task_types = {"classification", "regression"}
+        self.confidence_prefix = "confidence."
 
     @property
     def n_classes(self):
@@ -58,11 +58,6 @@ class MetaTask:
         return pd.concat([self.dataset, self.predictions_and_confidences], axis=1)
 
     @property
-    def confidence_prefix(self):
-        # Only get the first confidence prefix
-        return list(self.found_confidence_prefixes)[0]
-
-    @property
     def meta_data(self):
 
         meta_data = {
@@ -74,7 +69,7 @@ class MetaTask:
             "confidences": self.confidences,
             "predictor_descriptions": self.predictor_descriptions,
             "bad_predictors": self.bad_predictors,
-            "confidence_prefix": self.confidence_prefix,  # select only the first
+            "confidence_prefix": self.confidence_prefix,
             "feature_names": self.feature_names,
             "cat_feature_names": self.cat_feature_names,
             "folds": self.folds_indicator.tolist(),
@@ -127,7 +122,7 @@ class MetaTask:
     # --- Function to build a Metatask given data
     def init_dataset_information(self, dataset: pd.DataFrame, target_name: str, class_labels: List[str],
                                  feature_names: List[str], cat_feature_names: List[str], task_type: str,
-                                 openml_task_id: str, folds_indicator: np.ndarray, dataset_name: str):
+                                 openml_task_id: int, folds_indicator: np.ndarray, dataset_name: str):
         """Fill dataset information and basic task information
 
         Parameters
@@ -145,13 +140,23 @@ class MetaTask:
         task_type: {"classification", "regression"}
             String determining the task type.
         openml_task_id: int
-            OpenML Task ID, -1 if no OpenML Task
+            OpenML Task ID, Use a negative number like -1 if no OpenML Task. This will be the tasks ID / name.
         folds_indicator: np.ndarray
             Array of length (n_samples,) indicating the folds for each instances (starting from 0)
             We do not support hold-out validation currently.
         dataset_name: str
             Name of the dataset
         """
+
+        # -- Input check for arrays (which would not be serializable)
+        if isinstance(class_labels, (np.ndarray, pd.Series)):
+            class_labels = class_labels.tolist()
+        if isinstance(feature_names, (np.ndarray, pd.Series)):
+            feature_names = feature_names.tolist()
+        if isinstance(cat_feature_names, (np.ndarray, pd.Series)):
+            cat_feature_names = cat_feature_names.tolist()
+
+        # -- Save Data
         self.dataset = dataset
         self.dataset_name = dataset_name
         self.target_name = target_name
@@ -169,6 +174,88 @@ class MetaTask:
         self.is_regression = task_type == "regression"
 
         self._check_and_init_ground_truth()
+
+    def add_predictor(self, predictor_name: str, predictions: np.ndarray, confidences: Optional[np.ndarray] = None,
+                      conf_class_labels: Optional[List[str]] = None, predictor_description: Optional[str] = None,
+                      bad_predictor: bool = False, corruptions_details: Optional[dict] = None):
+        """Add a new predictor (base model) to the metatask
+
+        Parameters
+        ----------
+        predictor_name: str
+            name of the predictor; must be unique within a given metatask! (Overwriting is not supported yet)
+        predictions: array-like, (n_samples,)
+            Cross-val-predictions for the predictor that correspond to the fold_indicators of the metatask
+        confidences: array-like, Optional, (n_samples, n_classes), default=None
+            Confidences of the prediction. If None, due to Regression tasks or no confidences, use default confidences.
+        conf_class_labels: List[str], Optional, default = None
+            The order of the class labels in that the confidences are passed to this function.
+            It must contain the same labels as self.class_labels but can be in a different order!
+            This is very important to get right, else all confidence values will be wrongly used.
+        predictor_description: str, Optional, default=None
+            A short description of the predictor (e.g., the configuration as a string like in OpenML).
+            If None, an automatic description is created.
+        bad_predictor: bool, default=False
+            Set whether this predictor has some issue in its data or if any other reasons makes it bad (e.g. bad
+            performance).
+            Here, bad means that the metatasks should not use such predictors or allows them to be filtered later on.
+        corruptions_details: dict, default=None
+            A dict containing more details on why the predictor is bad or any other information you would want to keep
+            for later on the predictor. E.g., Assembled-OpenML uses this to store whether the confidences values of the
+            predictor had to be fixed.
+        """
+
+        # -- Input Checks
+        if conf_class_labels is not None:
+            if not set(conf_class_labels) == set(self.class_labels):
+                raise ValueError("Unknown class labels as input. Expected: {}; Got: {}".format(self.class_labels,
+                                                                                               conf_class_labels))
+        if predictor_name in self.predictors:
+            raise ValueError("The name of the predictor already exist. Can not overwrite."
+                             " The name must be unique. Got: {}".format(predictor_name))
+
+        # -- Build Data for Dataframe
+
+        # - Predictions to Series with correct name
+        if isinstance(predictions, pd.Series):
+            predictions = predictions.rename(predictor_name)
+        else:
+            # Assume it is an array-like, if not duck-typing will tell us
+            predictions = pd.Series(predictions, name=predictor_name)
+
+        # - Confidences to DataFrame
+        if confidences is None:
+            # TODO add code for regression and non-confidences data (fake confidences)
+            raise NotImplementedError("We currently require confidences for a predictor! Sorry...")
+        else:
+            # Get names for conf columns
+            class_labels_to_use = conf_class_labels if conf_class_labels is not None else self.class_labels
+            conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, predictor_name) for n in class_labels_to_use]
+
+            # Get DF with names
+            if isinstance(confidences, pd.DataFrame):
+                re_name = {confidences.columns[i]: n for i, n in enumerate(conf_col_names)}
+                confidences = confidences.rename(re_name, axis=1)
+            else:
+                # Assume it is an array-like, if not duck-typing will tell us
+                confidences = pd.DataFrame(confidences, columns=conf_col_names)
+
+        # - Check description
+        if predictor_description is None:
+            raise NotImplementedError("Automatic Description building is not yet supported. "
+                                      "Please set the description by hand.")
+
+        # -- Add prediction data to metatask
+        self.predictions_and_confidences = pd.concat([self.predictions_and_confidences, predictions, confidences],
+                                                     axis=1)
+        self.predictors.append(predictor_name)
+        self.confidences.extend(conf_col_names)
+        self.predictor_descriptions[predictor_name] = predictor_description
+
+        if bad_predictor:
+            self.bad_predictors.append(predictor_name)
+        if corruptions_details is not None:
+            self.predictor_corruptions_details[predictor_name] = corruptions_details
 
     def _check_and_init_ground_truth(self):
         # -- Process and Check ground truth depending on task type
@@ -206,18 +293,17 @@ class MetaTask:
 
         self.ground_truth = ground_truth
 
-    def read_selection_constraints(self, openml_metric_name: str, maximize_metric: bool, nr_base_models: int):
-        """Fill the constrains used to build the metatask
+    def read_selection_constraints(self, selection_constraints):
+        """Fill the constrains used to build the metatask.
+
+        This only updates but does not overwrite existing keys.
 
         Parameters
         ----------
-        openml_metric_name : str
-        maximize_metric : bool, default=True
-        nr_base_models: int, default=50
+        selection_constraints : dict
+            A dict containing the names and values for selection constraints
         """
-        self.selection_constraints["openml_metric_name"] = openml_metric_name
-        self.selection_constraints["maximize_metric"] = maximize_metric
-        self.selection_constraints["nr_base_models"] = nr_base_models
+        self.selection_constraints.update(selection_constraints)
 
     def read_metatask_from_files(self, input_dir: str, openml_task_id: int):
         """ Build a metatask using data from files
@@ -264,7 +350,6 @@ class MetaTask:
         self.confidences = meta_data["confidences"]
         self.predictor_descriptions = meta_data["predictor_descriptions"]
         self.bad_predictors = meta_data["bad_predictors"]
-        self.found_confidence_prefixes = {meta_data["confidence_prefix"]}
         self.feature_names = meta_data["feature_names"]
         self.cat_feature_names = meta_data["cat_feature_names"]
         self.folds_indicator = np.array(meta_data["folds"])

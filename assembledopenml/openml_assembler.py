@@ -175,9 +175,7 @@ class OpenMLAssembler:
 
     @staticmethod
     def _init_base_models_from_metaflows(meta_task: MetaTask, metaflows: List[MetaFlow]):
-        """Fill prediction data from a list of metaflow objects into a metatask object directly
-
-        TODO: refactor to calling a init function of meta_task and collecting data beforehand?
+        """Fill prediction data from a list of metaflow objects into a metatask object
 
         Parameters
         ----------
@@ -186,15 +184,14 @@ class OpenMLAssembler:
         """
 
         # For each flow, parse prediction and store it
+        found_confidence_prefixes = set()
         for meta_flow in metaflows:
             print("#### Process Flow {} + Run {} ####".format(meta_flow.flow_id, meta_flow.run_id))
 
             # -- Setup Column Names for MetaDataset
-            col_name = "prediction_flow_{}_run_{}".format(meta_flow.flow_id, meta_flow.run_id)
-            conf_col_names = ["confidence.{}.{}".format(n, col_name) for n in meta_task.class_labels]
-            meta_flow.name = col_name
+            name_to_use = "prediction_flow_{}_run_{}".format(meta_flow.flow_id, meta_flow.run_id)
 
-            # -- Get predictions
+            # -- Get prediction data
             meta_flow.get_predictions_data(meta_task.class_labels)
 
             # - Check if file_y_ture is corrupted (and thus potentially the predictions)
@@ -203,23 +200,20 @@ class OpenMLAssembler:
                 # -> Store it and ignore it
                 meta_flow.file_ground_truth_corrupted = True
 
-            # -- Merge (this way because performance warning otherwise)
-            re_names = {meta_flow.confidences.columns[i]: n for i, n in enumerate(conf_col_names)}
-            meta_task.predictions_and_confidences = pd.concat([meta_task.predictions_and_confidences,
-                                                               meta_flow.predictions.rename(col_name),
-                                                               meta_flow.confidences.rename(re_names, axis=1)], axis=1)
+            if meta_flow.file_ground_truth_corrupted or meta_flow.confidences_corrupted:
+                corruptions_details = meta_flow.corruption_details
+            else:
+                corruptions_details = None
 
-            # Add to relevant storage
-            meta_task.predictors.append(col_name)
-            meta_task.confidences.extend(conf_col_names)
-            meta_task.predictor_descriptions[col_name] = meta_flow.description
-            meta_task.found_confidence_prefixes.add(meta_flow.conf_prefix)
+            meta_task.add_predictor(name_to_use, meta_flow.predictions, meta_flow.confidences,
+                                    conf_class_labels=meta_task.class_labels,
+                                    predictor_description=meta_flow.description, bad_predictor=meta_flow.is_bad_flow,
+                                    corruptions_details=corruptions_details)
 
-        # Collect meta data about predictors
-        meta_task.bad_predictors.extend([mf.name for mf in metaflows if mf.is_bad_flow])
-        meta_task.predictor_corruptions_details.update({mf.name: mf.corruption_details for mf in metaflows
-                                                        if
-                                                        (mf.file_ground_truth_corrupted or mf.confidences_corrupted)})
+            # Other
+            found_confidence_prefixes.add(meta_flow.conf_prefix)
+
+        # TODO, decide what to do with this: print(found_confidence_prefixes)
 
         return meta_task
 
@@ -247,7 +241,9 @@ class OpenMLAssembler:
         meta_task = self._init_base_models_from_metaflows(meta_task, self.top_n)
 
         # -- Fill selection constraints data
-        meta_task.read_selection_constraints(self.openml_metric_name, self.maximize_metric, self.nr_base_models)
+        meta_task.read_selection_constraints({"openml_metric_name": self.openml_metric_name,
+                                              "maximize_metric": self.maximize_metric,
+                                              "nr_base_models": self.nr_base_models})
 
         # -- Rest such that .run() can be re-used
         self._reset()
@@ -280,6 +276,8 @@ class OpenMLAssembler:
         meta_task = self._init_base_models_from_metaflows(meta_task, valid_flows)
 
         # -- Fill selection constraints data
-        meta_task.read_selection_constraints(self.openml_metric_name, self.maximize_metric, self.nr_base_models)
+        meta_task.read_selection_constraints({"openml_metric_name": self.openml_metric_name,
+                                              "maximize_metric": self.maximize_metric,
+                                              "nr_base_models": self.nr_base_models})
 
         return meta_task
