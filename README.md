@@ -10,10 +10,17 @@ Currently, its main features are:
   Moreover, its class interface contains several useful method to simplify the evaluation and benchmarking of ensemble
   techniques. A collection of metatasks can be used to benchmark ensemble techniques without the computational overhead
   of training and evaluating base models.
+* **Assembled-OpenML**: an extension of Assembled to build metatasks with data from OpenML (its original design). Only a
+  OpenML Task ID must be passed to the code to generate a metatask for a specific OpenML task.
+  Technically, any ID can be passed. In practice, only supervised classification tasks are supported so far.
+  Moreover, this tool was build for and tested against curated benchmarks (like tasks in OpenMLCC-18). 
+  Other classification tasks should be supported as well but bugs might be more likely. 
 * **FakedClassifiers**: Code to simulate the behavior of a base model by passing it appropriate data during the
   initialization. Allows us to evaluate most ensemble techniques without code changes to the original implementation's
   code.
-* **Assembled-OpenML**: an extension of Assembled to fill build metatasks with data from OpenML (its original design).
+* **Supporting Ensemble Techniques** We created code to make ensemble techniques usable with (pre-fitted) base models.
+  This is not part of Assembled itself but rather additional example on how to use ensemble techniques with Assembled. 
+  Some implementation support base models by default other do not. See `/ensemble_techniques/` for more details.
 
 Currently, is main use-cases are:
 
@@ -158,16 +165,14 @@ a benchmark of ensemble techniques that works with the data directly instead of 
 This section is very much work in progress...
 
 ## Unit Tests
-We use [py.test](https://docs.pytest.org/en/latest/) for unit testing. 
+
+We use [py.test](https://docs.pytest.org/en/latest/) for unit testing.
 
 After installing it, while in the root directory (and in the current environment), call:
 
 ```bash
 python -m pytest tests/
 ```
-
-Currently, the test are slow because we first need to build metatasks before testing some of our code.
-Unsure how to fix this so far, perhaps need to add special constructor for tests in the future. 
 
 # Known Issues
 

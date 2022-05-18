@@ -395,6 +395,7 @@ class MetaTask:
         self.predictions_and_confidences = self.predictions_and_confidences.drop(columns=rel_conf_and_pred_cols)
         self.predictors = [pred for pred in self.predictors if pred not in predictor_names]
         self.confidences = [ele for ele in self.confidences if ele not in only_conf_cols]
+        self.bad_predictors = [pred for pred in self.bad_predictors if pred not in predictor_names]
         for pred_name in predictor_names:
             # save delete, does not raise key error if not in dict if we use pop here
             self.predictor_descriptions.pop(pred_name, None)
@@ -424,7 +425,6 @@ class MetaTask:
 
         if remove_bad_predictors:
             self.remove_predictors(self.bad_predictors)
-            self.bad_predictors = []
 
         if remove_constant_predictors:
             # Get unique counts

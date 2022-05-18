@@ -1,6 +1,5 @@
 import openml
 import numpy as np
-import pandas as pd
 from openml.tasks import OpenMLTask
 
 from assembledopenml.metaflow import MetaFlow
@@ -96,7 +95,7 @@ class OpenMLAssembler:
     @staticmethod
     def predictor_name_to_ids(pred_name):
 
-        if not re.match("^prediction_flow_\d*_run_\d*$", pred_name):
+        if not re.match(r"^prediction_flow_\d*_run_\d*$", pred_name):
             raise ValueError("Unknown Name format for the predictor: {}".format(pred_name))
 
         # Split
