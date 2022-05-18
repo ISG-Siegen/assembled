@@ -35,14 +35,14 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         data.
     simulate_n_features_in_: int, default=None
         The number of features seen during and used for validation.
-    fit_time_ : int, default=None
+    fit_time_ : float, default=0
         Time in seconds needed to fit the original real classifier.
-    predict_time_ : int, default=0
+    predict_time_ : float, default=0
             Time the real model took to evaluate/infer the predictions
     confidences_ : ndarray, shape (n_samples, n_classes)
         The confidences on the test input samples. We expect the confidences to be in the order of the classes as
         they appear in the training ground truth. (E.g.: by np.unique(y) or by a label encoder)
-    predict_proba_time_ : int, default=0
+    predict_proba_time_ : float, default=0
         Time the real model took to evaluate/infer the confidences
     label_encoder : bool, default=false
         Whether we need to apply encoding to the predictions.
@@ -59,7 +59,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
     def __init__(self, oracle_X=None, predictions_=None, confidences_=None, oracle_index_=None,
                  simulate_n_features_in_=None,
-                 predict_time_: int = 0, predict_proba_time_: int = 0, fit_time_: int = 0,
+                 predict_time_: float = 0, predict_proba_time_: float = 0, fit_time_: float = 0,
                  simulate_time: bool = False, label_encoder=False):
         self.simulate_time = simulate_time
         self.label_encoder = label_encoder
