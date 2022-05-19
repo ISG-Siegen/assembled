@@ -196,14 +196,18 @@ class OpenMLAssembler:
         return meta_task
 
 
-def init_dataset_from_task(meta_task: MetaTask, openml_task: OpenMLTask):
+def init_dataset_from_task(meta_task: MetaTask, openml_task):
     """ Fill the metatask's dataset using an initialized OpenMLTask
 
     Parameters
     ----------
-    openml_task : OpenMLTask
+    openml_task : OpenMLTask or int
         The OpenML Task object for which we shall build a metatask.
+        If int, we will first get the OpenMLTask for that id
     """
+    if isinstance(openml_task, int):
+        openml_task = openml.tasks.get_task(openml_task)
+
     # -- Get relevant data from task
     openml_dataset = openml_task.get_dataset()
     dataset_name = openml_dataset.name
