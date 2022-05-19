@@ -130,92 +130,6 @@ class OpenMLAssembler:
         self.top_n = []
         self.setup_ids = set()
 
-    @staticmethod
-    def _init_dataset_from_task(meta_task: MetaTask, openml_task: OpenMLTask):
-        """ Fill the metatask's dataset using an initialized OpenMLTask
-
-        Parameters
-        ----------
-        openml_task : OpenMLTask
-            The OpenML Task object for which we shall build a metatask.
-        """
-        # -- Get relevant data from task
-        openml_dataset = openml_task.get_dataset()
-        dataset_name = openml_dataset.name
-        dataset, _, cat_indicator, feature_names = openml_dataset.get_data()
-        target_name = openml_task.target_name
-        class_labels = openml_task.class_labels
-        # - Get Cat feature names
-        cat_feature_names = [f_name for cat_i, f_name in zip(cat_indicator, feature_names) if
-                             (cat_i == 1) and (f_name != target_name)]
-        feature_names.remove(target_name)  # Remove only afterwards, as indicator includes class
-        task_id = openml_task.task_id
-
-        if openml_task.task_type_id is openml.tasks.TaskType.SUPERVISED_CLASSIFICATION:
-            task_type = "classification"
-        elif openml_task.task_type_id == openml.tasks.TaskType.SUPERVISED_REGRESSION:
-            task_type = "regression"
-        else:
-            raise ValueError("Unknown or not supported openml task type id: {}".format(openml_task.task_type_id))
-
-        # - Handle Folds
-        openml_task.split = openml_task.download_split()
-        folds_indicator = np.empty(len(dataset))
-        for i in range(openml_task.split.folds):
-            # FIXME Ignores repetitions for now (only take first repetitions if multiple are available)
-            _, test = openml_task.get_train_test_split_indices(fold=i)
-            folds_indicator[test] = int(i)
-
-        # -- Fill object with values
-        meta_task.init_dataset_information(dataset, target_name, class_labels, feature_names, cat_feature_names,
-                                           task_type, task_id, folds_indicator, dataset_name)
-
-        return meta_task
-
-    @staticmethod
-    def _init_base_models_from_metaflows(meta_task: MetaTask, metaflows: List[MetaFlow]):
-        """Fill prediction data from a list of metaflow objects into a metatask object
-
-        Parameters
-        ----------
-        metaflows : List[MetaFlow]
-            A list of metaflow object of which the prediction data shall be stored in the metatask
-        """
-
-        # For each flow, parse prediction and store it
-        found_confidence_prefixes = set()
-        for meta_flow in metaflows:
-            print("#### Process Flow {} + Run {} ####".format(meta_flow.flow_id, meta_flow.run_id))
-
-            # -- Setup Column Names for MetaDataset
-            name_to_use = "prediction_flow_{}_run_{}".format(meta_flow.flow_id, meta_flow.run_id)
-
-            # -- Get prediction data
-            meta_flow.get_predictions_data(meta_task.class_labels)
-
-            # - Check if file_y_ture is corrupted (and thus potentially the predictions)
-            if sum(meta_flow.file_ground_truth != meta_task.ground_truth) > 0:
-                # ground truth of original data differs to predictions file y_ture
-                # -> Store it and ignore it
-                meta_flow.file_ground_truth_corrupted = True
-
-            if meta_flow.file_ground_truth_corrupted or meta_flow.confidences_corrupted:
-                corruptions_details = meta_flow.corruption_details
-            else:
-                corruptions_details = None
-
-            meta_task.add_predictor(name_to_use, meta_flow.predictions, meta_flow.confidences,
-                                    conf_class_labels=meta_task.class_labels,
-                                    predictor_description=meta_flow.description, bad_predictor=meta_flow.is_bad_flow,
-                                    corruptions_details=corruptions_details)
-
-            # Other
-            found_confidence_prefixes.add(meta_flow.conf_prefix)
-
-        # TODO, decide what to do with this: print(found_confidence_prefixes)
-
-        return meta_task
-
     def run(self, openml_task_id: int) -> MetaTask:
         """Search through OpenML for valid runs and their predictions.
 
@@ -232,12 +146,12 @@ class OpenMLAssembler:
         # -- Get OpenML Task and build metatask
         task = openml.tasks.get_task(openml_task_id)
         meta_task = MetaTask()
-        meta_task = self._init_dataset_from_task(meta_task, task)
+        meta_task = init_dataset_from_task(meta_task, task)
 
         # -- Collect Configurations
         self._collect_and_filter_runs(openml_task_id)
         print("We have found {} base models.".format(len(self.top_n)))
-        meta_task = self._init_base_models_from_metaflows(meta_task, self.top_n)
+        meta_task = init_base_models_from_metaflows(meta_task, self.top_n)
 
         # -- Fill selection constraints data
         meta_task.read_selection_constraints({"openml_metric_name": self.openml_metric_name,
@@ -268,11 +182,11 @@ class OpenMLAssembler:
         # -- Get OpenML Task and build metatask
         task = openml.tasks.get_task(openml_task_id)
         meta_task = MetaTask()
-        self._init_dataset_from_task(meta_task, task)
+        meta_task = init_dataset_from_task(meta_task, task)
 
         # -- Get predictor data and read into metatask
         valid_flows = self._build_flows_for_predictors(valid_predictors)
-        meta_task = self._init_base_models_from_metaflows(meta_task, valid_flows)
+        meta_task = init_base_models_from_metaflows(meta_task, valid_flows)
 
         # -- Fill selection constraints data
         meta_task.read_selection_constraints({"openml_metric_name": self.openml_metric_name,
@@ -280,3 +194,89 @@ class OpenMLAssembler:
                                               "nr_base_models": self.nr_base_models})
 
         return meta_task
+
+
+def init_dataset_from_task(meta_task: MetaTask, openml_task: OpenMLTask):
+    """ Fill the metatask's dataset using an initialized OpenMLTask
+
+    Parameters
+    ----------
+    openml_task : OpenMLTask
+        The OpenML Task object for which we shall build a metatask.
+    """
+    # -- Get relevant data from task
+    openml_dataset = openml_task.get_dataset()
+    dataset_name = openml_dataset.name
+    dataset, _, cat_indicator, feature_names = openml_dataset.get_data()
+    target_name = openml_task.target_name
+    class_labels = openml_task.class_labels
+    # - Get Cat feature names
+    cat_feature_names = [f_name for cat_i, f_name in zip(cat_indicator, feature_names) if
+                         (cat_i == 1) and (f_name != target_name)]
+    feature_names.remove(target_name)  # Remove only afterwards, as indicator includes class
+    task_id = openml_task.task_id
+
+    if openml_task.task_type_id is openml.tasks.TaskType.SUPERVISED_CLASSIFICATION:
+        task_type = "classification"
+    elif openml_task.task_type_id == openml.tasks.TaskType.SUPERVISED_REGRESSION:
+        task_type = "regression"
+    else:
+        raise ValueError("Unknown or not supported openml task type id: {}".format(openml_task.task_type_id))
+
+    # - Handle Folds
+    openml_task.split = openml_task.download_split()
+    folds_indicator = np.empty(len(dataset))
+    for i in range(openml_task.split.folds):
+        # FIXME Ignores repetitions for now (only take first repetitions if multiple are available)
+        _, test = openml_task.get_train_test_split_indices(fold=i)
+        folds_indicator[test] = int(i)
+
+    # -- Fill object with values
+    meta_task.init_dataset_information(dataset, target_name, class_labels, feature_names, cat_feature_names,
+                                       task_type, task_id, folds_indicator, dataset_name)
+
+    return meta_task
+
+
+def init_base_models_from_metaflows(meta_task: MetaTask, metaflows: List[MetaFlow]):
+    """Fill prediction data from a list of metaflow objects into a metatask object
+
+    Parameters
+    ----------
+    metaflows : List[MetaFlow]
+        A list of metaflow object of which the prediction data shall be stored in the metatask
+    """
+
+    # For each flow, parse prediction and store it
+    found_confidence_prefixes = set()
+    for meta_flow in metaflows:
+        print("#### Process Flow {} + Run {} ####".format(meta_flow.flow_id, meta_flow.run_id))
+
+        # -- Setup Column Names for MetaDataset
+        name_to_use = "prediction_flow_{}_run_{}".format(meta_flow.flow_id, meta_flow.run_id)
+
+        # -- Get prediction data
+        meta_flow.get_predictions_data(meta_task.class_labels)
+
+        # - Check if file_y_ture is corrupted (and thus potentially the predictions)
+        if sum(meta_flow.file_ground_truth != meta_task.ground_truth) > 0:
+            # ground truth of original data differs to predictions file y_ture
+            # -> Store it and ignore it
+            meta_flow.file_ground_truth_corrupted = True
+
+        if meta_flow.file_ground_truth_corrupted or meta_flow.confidences_corrupted:
+            corruptions_details = meta_flow.corruption_details
+        else:
+            corruptions_details = None
+
+        meta_task.add_predictor(name_to_use, meta_flow.predictions, meta_flow.confidences,
+                                conf_class_labels=meta_task.class_labels,
+                                predictor_description=meta_flow.description, bad_predictor=meta_flow.is_bad_flow,
+                                corruptions_details=corruptions_details)
+
+        # Other
+        found_confidence_prefixes.add(meta_flow.conf_prefix)
+
+    # TODO, decide what to do with this: print(found_confidence_prefixes)
+
+    return meta_task
