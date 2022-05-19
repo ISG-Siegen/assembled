@@ -144,6 +144,8 @@ class MetaTask:
         folds_indicator: np.ndarray
             Array of length (n_samples,) indicating the folds for each instances (starting from 0)
             We do not support hold-out validation currently.
+            Please be aware, the order of instances in the dataset should be equal to the order of the instances in
+            the fold_indicator. We do not check this / can not check this.
         dataset_name: str
             Name of the dataset
         """
@@ -536,11 +538,19 @@ class MetaTask:
             print("No predictors removed.")
 
     # -- Run/Benchmark Functions
+    def get_indices_for_fold(self, fold_idx, return_indices=False):
+        train_indices = self.folds_indicator != fold_idx
+        test_indices = self.folds_indicator == fold_idx
+
+        if return_indices:
+            return np.where(train_indices)[0], np.where(test_indices)[0]
+
+        return train_indices, test_indices
+
     def fold_split(self, return_fold_index=False):
         # Return split copy of metadataset
         for i in range(self.max_fold + 1):
-            test_indices = self.folds_indicator == i
-            train_indices = self.folds_indicator != i
+            train_indices, test_indices = self.get_indices_for_fold(i)
 
             if return_fold_index:
                 yield i, self.meta_dataset.iloc[train_indices].copy(), self.meta_dataset.iloc[test_indices].copy()
@@ -809,3 +819,12 @@ class MetaTask:
                       assert_meta_test_pred, assert_meta_train_conf, assert_meta_test_conf, X_train, y_train
             else:
                 yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test
+
+    def _exp_yield_base_model_data_across_folds(self):
+
+        for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
+            # -- Get Data from Metatask
+            X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
+            X_test, _, _, _ = self.split_meta_dataset(test_metadata)
+
+            yield idx, X_train, X_test, y_train

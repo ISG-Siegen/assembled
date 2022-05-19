@@ -1,3 +1,8 @@
+# Refactor TODO
+* add n-repeated k-fold with inner validation data 
+
+
+
 # Assembled
 
 Assembled is planed to be a framework for ensemble evaluation. It shall be able to run, benchmark, and evaluate ensemble
