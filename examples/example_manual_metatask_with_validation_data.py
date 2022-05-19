@@ -19,17 +19,17 @@ def get_bm_data(metatask, base_model):
     original_indices = []
     all_oof_data = []
 
-    for fold_idx, X_train, X_test, y_train in mt._exp_yield_base_model_data_across_folds():
+    for fold_idx, X_train, X_test, y_train in metatask._exp_yield_base_model_data_across_folds():
         # Get classes because not all bases models have this
         classes_ = np.unique(y_train)
 
         # Da Basic Preprocessing
         X_train = preproc.fit_transform(X_train)
         X_test = preproc.transform(X_test)
-        train_ind, test_ind = mt.get_indices_for_fold(fold_idx, return_indices=True)
+        train_ind, test_ind = metatask.get_indices_for_fold(fold_idx, return_indices=True)
 
         # Get OOF Data (inner validation data)
-        oof_confidences = cross_val_predict(bm, X_train, y_train, cv=5,
+        oof_confidences = cross_val_predict(base_model, X_train, y_train, cv=5,
                                             method="predict_proba")
         oof_predictions = classes_.take(np.argmax(oof_confidences, axis=1), axis=0)
         oof_indices = list(train_ind)
@@ -37,8 +37,8 @@ def get_bm_data(metatask, base_model):
         all_oof_data.append(oof_data)
 
         # Get Test Data
-        bm.fit(X_train, y_train)
-        fold_test_confidences = bm.predict_proba(X_test)
+        base_model.fit(X_train, y_train)
+        fold_test_confidences = base_model.predict_proba(X_test)
         fold_test_predictions = classes_.take(np.argmax(fold_test_confidences, axis=1), axis=0)
         fold_indices = list(test_ind)
 
