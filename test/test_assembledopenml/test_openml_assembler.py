@@ -22,6 +22,6 @@ class TestOpenMLAssembler:
         assert mt.is_classification is not None
         assert mt.is_regression is not None
         assert mt.openml_task_id is not None
-        assert mt.folds_indicator is not None
+        assert mt.folds is not None
 
         assert len(mt.predictors) == 5

@@ -157,7 +157,7 @@ class OpenMLAssembler:
         meta_task.read_selection_constraints({"openml_metric_name": self.openml_metric_name,
                                               "maximize_metric": self.maximize_metric,
                                               "nr_base_models": self.nr_base_models})
-
+        meta_task.read_randomness("OpenML")
         # -- Rest such that .run() can be re-used
         self._reset()
 
@@ -192,6 +192,7 @@ class OpenMLAssembler:
         meta_task.read_selection_constraints({"openml_metric_name": self.openml_metric_name,
                                               "maximize_metric": self.maximize_metric,
                                               "nr_base_models": self.nr_base_models})
+        meta_task.read_randomness("OpenML")
 
         return meta_task
 

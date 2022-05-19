@@ -4,7 +4,7 @@ import os
 import json
 
 from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, initialize_fake_models
-from typing import List, Tuple, Optional, Callable
+from typing import List, Tuple, Optional, Callable, Union
 from sklearn.model_selection import train_test_split
 
 
@@ -28,7 +28,7 @@ class MetaTask:
         self.is_classification = None
         self.is_regression = None
         self.openml_task_id = None
-        self.folds_indicator = None  # An array where each value represents the fold of an instance (starts from 0)
+        self.folds = None  # An array where each value represents the fold of an instance (starts from 0)
 
         # -- For Base Models
         self.predictions_and_confidences = pd.DataFrame()
@@ -37,6 +37,8 @@ class MetaTask:
         self.bad_predictors = []  # List of predictor names that have ill-formatted predictions or wrong data
         self.predictor_corruptions_details = {}
         self.confidences = []  # List of column names of confidences
+        self.validation_predictions_and_confidences = pd.DataFrame()
+        self.use_validation_data = False
 
         # -- Selection constrains (used to find the data of this metatask)
         self.selection_constraints = {}
@@ -44,6 +46,14 @@ class MetaTask:
         # -- Other
         self.supported_task_types = {"classification", "regression"}
         self.confidence_prefix = "confidence."
+        self.fold_postfix = ".fold"
+
+        # -- Randomness
+        self.random_seed_for_outer_folds_split = None
+        self.randomness_base_seed_validation_splits = None
+
+        # -- Backwards Compatibility
+        self.missing_metadata_in_file = None
 
     @property
     def n_classes(self):
@@ -55,28 +65,20 @@ class MetaTask:
 
     @property
     def meta_dataset(self):
-        return pd.concat([self.dataset, self.predictions_and_confidences], axis=1)
+        return pd.concat([self.dataset, self.predictions_and_confidences, self.validation_predictions_and_confidences],
+                         axis=1)
+
+    @property
+    def meta_data_keys(self):
+        return ["openml_task_id", "dataset_name", "target_name", "class_labels", "predictors", "confidences",
+                "predictor_descriptions", "bad_predictors", "confidence_prefix", "feature_names",
+                "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
+                "use_validation_data", "random_seed_for_outer_folds_split", "randomness_base_seed_validation_splits",
+                "folds"]
 
     @property
     def meta_data(self):
-
-        meta_data = {
-            "openml_task_id": self.openml_task_id,
-            "dataset_name": self.dataset_name,
-            "target_name": self.target_name,
-            "class_labels": self.class_labels,
-            "predictors": self.predictors,
-            "confidences": self.confidences,
-            "predictor_descriptions": self.predictor_descriptions,
-            "bad_predictors": self.bad_predictors,
-            "confidence_prefix": self.confidence_prefix,
-            "feature_names": self.feature_names,
-            "cat_feature_names": self.cat_feature_names,
-            "folds": self.folds_indicator.tolist(),
-            "selection_constraints": self.selection_constraints,
-            "task_type": "classification" if self.is_classification else "regression",
-            "predictor_corruptions_details": self.predictor_corruptions_details
-        }
+        meta_data = {md_k: getattr(self, md_k) for md_k in self.meta_data_keys}
 
         return meta_data
 
@@ -117,7 +119,23 @@ class MetaTask:
 
     @property
     def max_fold(self):
-        return int(self.folds_indicator.max())
+        return int(self.folds.max())
+
+    @property
+    def validation_predictions_columns(self):
+        if not self.use_validation_data:
+            return []
+
+        return [pred_col + "{}{}".format(self.fold_postfix, i) for pred_col in self.predictors for i in
+                range(self.max_fold + 1)]
+
+    @property
+    def validation_confidences_columns(self):
+        if not self.use_validation_data:
+            return []
+
+        return ["{}{}.{}".format(self.confidence_prefix, n, p_name) for n in
+                self.class_labels for p_name in self.validation_predictions_columns]
 
     # --- Function to build a Metatask given data
     def init_dataset_information(self, dataset: pd.DataFrame, target_name: str, class_labels: List[str],
@@ -166,7 +184,7 @@ class MetaTask:
         self.feature_names = feature_names
         self.cat_feature_names = cat_feature_names
         self.openml_task_id = openml_task_id
-        self.folds_indicator = folds_indicator
+        self.folds = folds_indicator
 
         # Handle task type
         self.task_type = task_type
@@ -179,7 +197,8 @@ class MetaTask:
 
     def add_predictor(self, predictor_name: str, predictions: np.ndarray, confidences: Optional[np.ndarray] = None,
                       conf_class_labels: Optional[List[str]] = None, predictor_description: Optional[str] = None,
-                      bad_predictor: bool = False, corruptions_details: Optional[dict] = None):
+                      bad_predictor: bool = False, corruptions_details: Optional[dict] = None,
+                      validation_data: Optional[List[Tuple[int, np.ndarray, np.ndarray, np.ndarray]]] = None):
         """Add a new predictor (base model) to the metatask
 
         Parameters
@@ -205,6 +224,10 @@ class MetaTask:
             A dict containing more details on why the predictor is bad or any other information you would want to keep
             for later on the predictor. E.g., Assembled-OpenML uses this to store whether the confidences values of the
             predictor had to be fixed.
+        validation_data: List[Tuple[int, array-like, array-like, array-like]], default=None
+            The validation of the predictor for all folds.
+            We assume an input of a list of lists which contain: List[the fold index, the predictions on the validation
+            data, confidences on the validation data, indices of the validation data].
         """
 
         # -- Input Checks
@@ -216,7 +239,7 @@ class MetaTask:
             raise ValueError("The name of the predictor already exist. Can not overwrite."
                              " The name must be unique. Got: {}".format(predictor_name))
 
-        # -- Build Data for Dataframe
+            # -- Build Data for Dataframe
 
         # - Predictions to Series with correct name
         if isinstance(predictions, pd.Series):
@@ -247,7 +270,60 @@ class MetaTask:
             raise NotImplementedError("Automatic Description building is not yet supported. "
                                       "Please set the description by hand.")
 
-        # -- Add prediction data to metatask
+        # - Check, sort, and store the validation data
+        if validation_data is not None:
+            self.use_validation_data = True
+
+            # Iterate over validation data and store
+            for fold_idx, val_preds, val_confs, val_indices in validation_data:
+                save_name = predictor_name + "{}{}".format(self.fold_postfix, fold_idx)
+
+                # --- Val predictions
+                if isinstance(val_preds, pd.Series):
+                    val_pred_data = val_preds.rename(save_name)
+                else:
+                    # Assume it is an array-like, if not duck-typing will tell us
+                    val_pred_data = pd.Series(val_preds, name=save_name)
+
+                # --- Val confidences
+                if val_confs is None:
+                    raise NotImplementedError("We currently require validation confidences for a predictor! Sorry...")
+                else:
+                    class_labels_to_use = conf_class_labels if conf_class_labels is not None else self.class_labels
+                    val_conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, save_name) for n in
+                                          class_labels_to_use]
+
+                    # Get DF with names
+                    if isinstance(val_confs, pd.DataFrame):
+                        re_name = {val_confs.columns[i]: n for i, n in enumerate(val_conf_col_names)}
+                        val_confs = val_confs.rename(re_name, axis=1)
+                    else:
+                        # Assume it is an array-like, if not duck-typing will tell us
+                        val_confs = pd.DataFrame(val_confs, columns=val_conf_col_names)
+
+                    val_pred_data = pd.concat([val_pred_data, val_confs], axis=1)
+
+                # --- Preprocess data to be stored
+                remaining_indices = self.get_indices_for_fold(fold_idx, return_indices=True)[1]
+                val_pred_data_filler = pd.DataFrame()
+                for col in val_pred_data.columns:
+                    val_pred_data_filler[col] = np.full(len(remaining_indices), np.nan)
+
+                val_pred_data["tmp_idx"] = val_indices
+                val_pred_data_filler["tmp_idx"] = remaining_indices
+
+                val_pred_data = pd.concat([val_pred_data, val_pred_data_filler], axis=0)
+                val_pred_data = val_pred_data.sort_values(by="tmp_idx").drop(columns=["tmp_idx"]).reset_index(drop=True)
+
+                # --- Store Validation Data
+                self.validation_predictions_and_confidences = pd.concat(
+                    [self.validation_predictions_and_confidences, val_pred_data], axis=1)
+
+                # -- Add prediction data to metatask
+        else:
+            if self.use_validation_data:
+                raise ValueError("Validation data is required if at least one other base model has validation!")
+
         self.predictions_and_confidences = pd.concat([self.predictions_and_confidences, predictions, confidences],
                                                      axis=1)
         self.predictors.append(predictor_name)
@@ -307,6 +383,23 @@ class MetaTask:
         """
         self.selection_constraints.update(selection_constraints)
 
+    def read_randomness(self, random_seed_for_outer_folds_split: Union[int, str],
+                        randomness_base_seed_validation_splits: Optional[int] = None):
+        """
+
+        Parameters
+        ----------
+        random_seed_for_outer_folds_split: int or str
+            The random seed (integer) used to create the folds. If not available, pass a short description why.
+        randomness_base_seed_validation_splits: int, default=None
+            We assume that the splits used to get the validation data were generated by some controlled randomness.
+            That is, a RandomState object initialized with a base seed was (re-)used each fold to generate the splits.
+            Here, we want to have the base seed to store
+
+        """
+        self.random_seed_for_outer_folds_split = random_seed_for_outer_folds_split
+        self.randomness_base_seed_validation_splits = randomness_base_seed_validation_splits
+
     def read_metatask_from_files(self, input_dir: str, openml_task_id: int):
         """ Build a metatask using data from files
 
@@ -344,29 +437,45 @@ class MetaTask:
             meta_dataset[col_name] = meta_dataset[col_name].cat.set_categories(meta_data["class_labels"])
 
         # -- Init Meta Data
-        self.openml_task_id = openml_task_id
-        self.dataset_name = meta_data["dataset_name"]
-        self.target_name = meta_data["target_name"]
-        self.class_labels = meta_data["class_labels"]
-        self.predictors = meta_data["predictors"]
-        self.confidences = meta_data["confidences"]
-        self.predictor_descriptions = meta_data["predictor_descriptions"]
-        self.bad_predictors = meta_data["bad_predictors"]
-        self.feature_names = meta_data["feature_names"]
-        self.cat_feature_names = meta_data["cat_feature_names"]
-        self.folds_indicator = np.array(meta_data["folds"])
-        self.selection_constraints = meta_data["selection_constraints"]
+        for md_k in meta_data.keys():
+            setattr(self, md_k, meta_data[md_k])
+
+        # Post process special cases
+        self.folds = np.array(self.folds)
         self.is_classification = "classification" == meta_data["task_type"]
         self.is_regression = "regression" == meta_data["task_type"]
-        self.predictor_corruptions_details = meta_data["predictor_corruptions_details"]
-        self.task_type = meta_data["task_type"]
+        self.missing_metadata_in_file = [x for x in self.meta_data_keys if x not in meta_data.keys()]
 
         # -- Init Datasets
         self.dataset = meta_dataset[self.feature_names + [self.target_name]]
         self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
+        self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
+                                                                   self.validation_confidences_columns]
 
-    def read_randomness(self, random_state):
-        self.test_split_random_state = random_state
+    def read_folds(self, fold_indicator: np.ndarray):
+        """Read a new folds specification. The user must make sure that later data is added according to these folds.
+
+        Parameters
+        ----------
+
+        """
+        if not isinstance(fold_indicator, np.ndarray):
+            raise ValueError("Folds must be passed as numpy array!")
+
+        if fold_indicator.min() != 0:
+            raise ValueError("Folds numbers must start from 0. We are all computer scientists here...")
+
+        if fold_indicator.max() != (len(np.unique(fold_indicator)) - 1):
+            raise ValueError("Fold values are wrong. Highest fold unequal to unique values - 1")
+
+        if self.n_instances != len(fold_indicator):
+            raise ValueError("Fold indicator contains less samples than the dataset.")
+
+        if len(self.predictors) > 0:
+            raise ValueError("Chaining Folds even though predictors have been added based on old folds."
+                             " Remove the predictor first or pass the folds earlier.")
+
+        self.folds = fold_indicator
 
     def to_files(self, output_dir: str = ""):
         """Store the metatask in two files. One .csv and .json file
@@ -386,7 +495,10 @@ class MetaTask:
         file_path_json = os.path.join(output_dir, "metatask_{}.json".format(self.openml_task_id))
 
         with open(file_path_json, 'w', encoding='utf-8') as f:
-            json.dump(self.meta_data, f, ensure_ascii=False, indent=4)
+            meta_data = self.meta_data
+            meta_data["folds"] = meta_data["folds"].tolist()  # make it serializable
+
+            json.dump(meta_data, f, ensure_ascii=False, indent=4)
 
     # --- Code for Post Processing a Metatask after it was build
     def remove_predictors(self, predictor_names):
@@ -402,6 +514,19 @@ class MetaTask:
             # save delete, does not raise key error if not in dict if we use pop here
             self.predictor_descriptions.pop(pred_name, None)
             self.predictor_corruptions_details.pop(pred_name, None)
+
+        # Validation Data
+        if self.use_validation_data:
+            val_pred_cols = ["{}{}{}".format(p_name, self.fold_postfix, i) for i in range(10) for p_name in
+                             predictor_names]
+            val_conf_cols = ["{}{}.{}".format(self.confidence_prefix, n, p_name) for n in
+                             self.class_labels for p_name in val_pred_cols]
+            self.validation_predictions_and_confidences = self.validation_predictions_and_confidences.drop(
+                columns=val_pred_cols + val_conf_cols)
+
+            # If last validation data base model was removed act on it
+            if not self.validation_predictions_columns:
+                self.use_validation_data = False
 
     def filter_predictors(self, remove_bad_predictors: bool = True, remove_constant_predictors: bool = False,
                           remove_worse_than_random_predictors: bool = False,
@@ -539,8 +664,8 @@ class MetaTask:
 
     # -- Run/Benchmark Functions
     def get_indices_for_fold(self, fold_idx, return_indices=False):
-        train_indices = self.folds_indicator != fold_idx
-        test_indices = self.folds_indicator == fold_idx
+        train_indices = self.folds != fold_idx
+        test_indices = self.folds == fold_idx
 
         if return_indices:
             return np.where(train_indices)[0], np.where(test_indices)[0]
@@ -557,7 +682,8 @@ class MetaTask:
             else:
                 yield self.meta_dataset.iloc[train_indices].copy(), self.meta_dataset.iloc[test_indices].copy()
 
-    def split_meta_dataset(self, meta_dataset) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame]:
+    def split_meta_dataset(self, meta_dataset) -> Tuple[
+        pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Splits the meta dataset into its subcomponents
 
         Parameters
@@ -577,7 +703,8 @@ class MetaTask:
         """
 
         return meta_dataset[self.feature_names], meta_dataset[self.target_name], meta_dataset[self.predictors], \
-               meta_dataset[self.confidences]
+               meta_dataset[self.confidences], meta_dataset[self.validation_predictions_columns], \
+               meta_dataset[self.validation_confidences_columns]
 
     @staticmethod
     def _save_fold_results(y_true, y_pred, fold_idx, out_path, technique_name, classification=True):
@@ -713,8 +840,8 @@ class MetaTask:
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
 
             # -- Get Data from Metatask
-            X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
-            X_test, y_test, test_base_predictions, test_base_confidences = self.split_meta_dataset(test_metadata)
+            X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata)
+            X_test, y_test, test_base_predictions, test_base_confidences, _, _ = self.split_meta_dataset(test_metadata)
 
             # -- Employ Preprocessing
             if preprocessor is not None:
@@ -781,7 +908,7 @@ class MetaTask:
             (preprocessed)
         y: full ground truth
         """
-        X, y, base_predictions, base_confidences = self.split_meta_dataset(self.meta_dataset)
+        X, y, base_predictions, base_confidences, _, _ = self.split_meta_dataset(self.meta_dataset)
         if preprocessor is not None:
             X = preprocessor.fit_transform(X)
         base_models = initialize_fake_models(X, y, X, base_predictions, base_confidences, pre_fit_base_models,
@@ -793,8 +920,8 @@ class MetaTask:
                                                 pre_fit_base_models, base_models_with_names, label_encoder,
                                                 preprocessor, include_test_data=False):
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
-            X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
-            X_test, y_test, test_base_predictions, test_base_confidences = self.split_meta_dataset(test_metadata)
+            X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata)
+            X_test, y_test, test_base_predictions, test_base_confidences, _, _ = self.split_meta_dataset(test_metadata)
 
             if preprocessor is not None:
                 X_train = preprocessor.fit_transform(X_train)
@@ -820,11 +947,11 @@ class MetaTask:
             else:
                 yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test
 
-    def _exp_yield_base_model_data_across_folds(self):
+    def _exp_yield_data_for_base_model_across_folds(self):
 
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
             # -- Get Data from Metatask
-            X_train, y_train, _, _ = self.split_meta_dataset(train_metadata)
-            X_test, _, _, _ = self.split_meta_dataset(test_metadata)
+            X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata)
+            X_test, _, _, _, _, _ = self.split_meta_dataset(test_metadata)
 
             yield idx, X_train, X_test, y_train
