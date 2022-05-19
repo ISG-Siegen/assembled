@@ -278,27 +278,30 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
 # -- Additional Functions for FakedClassifiers Usage
 def initialize_fake_models(X_train, y_train, X_test, known_predictions, known_confidences, pre_fit_base_models,
-                           base_models_with_names, label_encoder):
+                           base_models_with_names, label_encoder, confidence_prefix):
     # Expect the predictions/confidences on the whole meta-data as input. Whereby meta-data is the data passed to
     #   the ensemble method.
 
     faked_base_models = []
 
     for model_name in list(known_predictions):  # known predictions is a dataframe
-        model_confidences = known_confidences[["confidence.{}.{}".format(class_name, model_name)
+        # Sort Predictions to the default predict_proba style
+        model_confidences = known_confidences[["{}{}.{}".format(confidence_prefix, class_name, model_name)
                                                for class_name in np.unique(y_train)]]
         model_predictions = known_predictions[model_name]
+
+        # Fit the FakedClassifier
         fc = FakedClassifier(X_test, model_predictions, model_confidences, label_encoder=label_encoder)
 
         # -- Set fitted or not (sklearn vs. deslib)
         if pre_fit_base_models:
-            if isinstance(X_train, pd.DataFrame) and isinstance(y_train, pd.Series):
-                fc.fit(X_train.to_numpy(), y_train.to_numpy())
-            elif isinstance(y_train, pd.Series):
-                fc.fit(X_train, y_train.to_numpy())
-            else:
-                raise ValueError("Unsupported Types for X_train or y_train: " +
-                                 "X_train type is {}; y_train type is {}".format(type(X_train), type(y_train)))
+            # fix input type
+            if isinstance(X_train, pd.DataFrame):
+                X_train = X_train.to_numpy()
+            if isinstance(y_train, pd.Series):
+                y_train = y_train.to_numpy()
+
+            fc.fit(X_train, y_train)
 
         # -- Set result output (sklearn vs. deslib)
         res = fc

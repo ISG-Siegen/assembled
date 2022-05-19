@@ -1,5 +1,5 @@
 # Refactor TODO
-* add n-repeated k-fold with inner validation data 
+* evaluate with validation data by default if it is true 
 
 
 
@@ -173,11 +173,15 @@ This section is very much work in progress...
 
 We use [py.test](https://docs.pytest.org/en/latest/) for unit testing.
 
-After installing it, while in the root directory (and in the current environment), call:
+While in the root directory (and in the current environment), call:
 
 ```bash
 python -m pytest tests/
 ```
+
+## Some Notes on Design Decision 
+* We do not support repetitions in a metatask itself. We argue that in such case the repetitions are "outside" of the metatasks. In other words, to benchmark n-repeated k-fold we think it is more appropriate to create n metatasks instead of 1 containing all repetition data. Not sure if this is the best way to for the future but for now it is okay. 
+  * Including n-repeated in a metatask could be achieved by adding appropriate prefixes to the base models and making the fold_indicator a 2D array.  
 
 # Known Issues
 

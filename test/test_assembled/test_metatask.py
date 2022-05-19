@@ -117,7 +117,7 @@ class TestMetaTask:
         original_indices = []
         all_oof_data = []
 
-        for fold_idx, X_train, X_test, y_train in mt._exp_yield_data_for_base_model_across_folds():
+        for fold_idx, X_train, X_test, y_train, _ in mt._exp_yield_data_for_base_model_across_folds():
             # Get classes because not all bases models have this
             classes_ = np.unique(y_train)
 

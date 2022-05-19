@@ -52,16 +52,18 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed):
         original_indices.extend(fold_indices)
         fold_perfs.append(OpenMLAUROC()(y_test, fold_test_predictions))
 
-    test_confidences, test_predictions, original_indices = zip(
-        *sorted(zip(test_confidences, test_predictions, original_indices),
-                key=lambda x: x[2]))
+    test_confidences, test_predictions, original_indices = zip(*sorted(zip(test_confidences, test_predictions,
+                                                                           original_indices), key=lambda x: x[2]))
     test_confidences = np.array(test_confidences)
     test_predictions = np.array(test_predictions)
+
+    print(fold_perfs)
+    print("Average Performance Originally:", sum(fold_perfs) / len(fold_perfs))
 
     return test_predictions, test_confidences, all_oof_data, classes_
 
 
-if __name__ == "__main__":
+def x_test_evaluation_with_validation_data():
     # Control Randomness
     random_base_seed_models = 1
     random_base_seed_data = 0
@@ -87,10 +89,10 @@ if __name__ == "__main__":
     preproc = get_default_preprocessing()
 
     base_models = [
-        ("RF_4", RandomForestClassifier(n_estimators=4)),
-        ("RF_5", RandomForestClassifier(n_estimators=5)),
-        ("RF_6", RandomForestClassifier(n_estimators=6)),
-        ("RF_7", RandomForestClassifier(n_estimators=7)),
+        ("RF_4", RandomForestClassifier(n_estimators=4, random_state=1)),
+        ("RF_5", RandomForestClassifier(n_estimators=5, random_state=2)),
+        ("RF_6", RandomForestClassifier(n_estimators=6, random_state=3)),
+        ("RF_7", RandomForestClassifier(n_estimators=7, random_state=4)),
     ]
 
     for bm_name, bm in base_models:
@@ -102,7 +104,7 @@ if __name__ == "__main__":
                          predictor_description=str(bm), validation_data=bm_validation_data)
 
     # Example on how to evaluate base models with a metatask that includes validation data
-    technique_run_args = {"ensemble_size": 50,
+    technique_run_args = {"ensemble_size": 1,
                           "metric": OpenMLAUROC(),
                           "random_state": np.random.RandomState(random_base_seed_models)
                           }
@@ -112,4 +114,14 @@ if __name__ == "__main__":
                                                use_validation_to_train_ensemble_techniques=True,
                                                return_scores=OpenMLAUROC())
     print(fold_scores)
-    print("Average Performance Ensemble Selection:", sum(fold_scores) / len(fold_scores))
+    print("Average Performance Fake Models:", sum(fold_scores) / len(fold_scores))
+
+
+x_test_evaluation_with_validation_data()
+
+
+"""
+[0.987476028335486, 0.967868185198231, 0.9901960784313725, 0.987476028335486, 0.9940119760479043, 0.9809400806230677, 0.9934210526315789, 0.9748660573589664, 0.9808540813110621, 0.9934640522875817]
+Average Performance Fake Models: 0.9850573620560736
+
+"""
