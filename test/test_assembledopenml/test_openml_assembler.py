@@ -3,6 +3,7 @@ import pytest
 
 
 class TestOpenMLAssembler:
+    """This can take a long time because of API Calls (init also must do an API call)"""
 
     def test_assembler_init(self):
         with pytest.raises(ValueError):
