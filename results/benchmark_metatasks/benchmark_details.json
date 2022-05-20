@@ -1619,10 +1619,43 @@
             "prediction_flow_12736_run_10269199"
         ]
     },
-    "selection_constraints": {
-        "openml_metric_name": "area_under_roc_curve",
-        "maximize_metric": true,
-        "nr_base_models": 50
+    "total_selection_constraints": {
+        "openml_metric_name": ["area_under_roc_curve"],
+        "maximize_metric": [true],
+        "nr_base_models": [50]
+    },
+    "selection_constraints_per_task": {
+        "3913": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "3560": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9957": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "23": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "167124": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "29": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "3902": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "167120": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9976": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "14969": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9952": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "3917": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9910": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "146819": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9978": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "10101": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "18": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "3904": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "31": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "14965": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "3918": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "53": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "146195": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9971": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "3903": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "146817": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "2079": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "7592": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "9985": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "37": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50},
+        "14954": {"openml_metric_name": "area_under_roc_curve", "maximize_metric": true, "nr_base_models": 50}
     },
     "benchmark_search_parameters": {
         "vba_sba_perf_gap_min": 0.05,
@@ -1634,6 +1667,7 @@
         "remove_worse_than_random_predictors": true,
         "remove_bad_predictors": true,
         "score_metric": "openml_area_under_roc_curve",
-        "score_metric_maximize": true
+        "score_metric_maximize": true,
+        "old_search_parameters": ["vba_sba_perf_gap_min", "vba_sba_sel_gap_min", "only_must_have_predictors"]
     }
 }
