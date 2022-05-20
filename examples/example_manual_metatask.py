@@ -6,14 +6,18 @@ import numpy as np
 from assembled.metatask import MetaTask
 
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
-from sklearn.datasets import load_breast_cancer
+from sklearn.datasets import load_breast_cancer  # load_breast_cancer, load_digits, load_iris, load_wine
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 
+# Select dataset
+sklearn_load_dataset_function = load_breast_cancer
+metatask_id = -1  # Negative number because not an OpenML task!
+
 # Load a Dataset as Dataframe
-task_data = load_breast_cancer(as_frame=True)
+task_data = sklearn_load_dataset_function(as_frame=True)
 target_name = task_data.target.name
 dataset_frame = task_data.frame
-class_labels = task_data.target_names
+class_labels = np.array([str(x) for x in task_data.target_names])  # cast labels to string
 feature_names = task_data.feature_names
 cat_feature_names = []
 # Make target column equal class labels again (inverse of label encoder)
@@ -32,7 +36,7 @@ for fold_idx, (train_index, test_index) in enumerate(
 
 mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
                             feature_names=feature_names, cat_feature_names=cat_feature_names,
-                            task_type="classification", openml_task_id=-1,  # if not an OpenML task, use -X for now
+                            task_type="classification", openml_task_id=metatask_id,
                             dataset_name="breast_cancer", folds_indicator=fold_indicators
                             )
 

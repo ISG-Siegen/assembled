@@ -73,7 +73,7 @@ class MetaTask:
         return ["openml_task_id", "dataset_name", "target_name", "class_labels", "predictors", "confidences",
                 "predictor_descriptions", "bad_predictors", "confidence_prefix", "feature_names",
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
-                "use_validation_data", "random_seed_for_outer_folds_split", "randomness_base_seed_validation_splits",
+                "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
                 "folds"]
 
     @property
@@ -175,6 +175,9 @@ class MetaTask:
             feature_names = feature_names.tolist()
         if isinstance(cat_feature_names, (np.ndarray, pd.Series)):
             cat_feature_names = cat_feature_names.tolist()
+
+        if any(not isinstance(x, str) for x in class_labels):
+            raise ValueError("Class labels must be strings!")
 
         # -- Save Data
         self.dataset = dataset
@@ -435,6 +438,8 @@ class MetaTask:
 
         # Post process categories (will be skipped if not classification)
         for col_name in cat_labels:
+            if any(not isinstance(x, str) for x in meta_data["class_labels"]):
+                raise ValueError("Something went wrong, class labels should be strings but are integers!")
             meta_dataset[col_name] = meta_dataset[col_name].cat.set_categories(meta_data["class_labels"])
 
         # -- Init Meta Data

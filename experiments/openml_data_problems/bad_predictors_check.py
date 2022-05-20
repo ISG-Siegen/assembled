@@ -4,7 +4,7 @@ We have used this to find the KNOWN_BAD_FLOWS below for a subset of all crawled 
 This might be helpful to explore the problems of OpenML prediction data in the future.
 """
 
-from results.data_utils import get_id_and_validate_existing_data
+from assembled.benchmaker import get_id_and_validate_existing_data
 from assembled.metatask import MetaTask
 from assembledopenml.metaflow import MetaFlow
 import pandas as pd

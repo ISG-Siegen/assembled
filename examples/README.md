@@ -5,6 +5,10 @@
 * `example_manual_metatask.py`: An example of how to build a metatask from your own data. This includes filling a
   metatask with dataset and task information. Moreover, it is shown how to add the predictions collected from (sklearn)
   base models to a metatask.
+* `example_manual_metatask_with_validation_data.py`: An example of how to build a metatask from your own data and from
+  OpenML. That is, filling a metatask with dataset and task information from OpenML. While filling the predictor
+  information on your own. This allows you to add additional validation data (which base models on OpenML do not have).
+  In this example, we also show how to evaluate with validation data.
 * `example_openml_cc18.py`: An example on how to use the task IDs from the curated classification benchmark OpenML-CC18
   to build and save metatasks. As implied by one of the comments, you could also pass a list of task IDs by hand.
 * `example_rebuild_benchmark_data.py`: The code that can be used to re-build a benchmark from a `benchmark_details.json`
