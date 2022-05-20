@@ -1,7 +1,9 @@
 import os
 import glob
 import json
-from typing import Tuple, Callable
+from typing import Tuple, Callable, List
+from pathlib import Path
+import shutil
 
 from assembled.metatask import MetaTask
 
@@ -15,6 +17,8 @@ class BenchMaker:
         Path to the directory of metatasks that shall be used to build the benchmark.
     output_path_benchmark_metatask: str
         Path to the directory in which the selected and post-processed metatasks of the benchmark shall be stored.
+    tasks_to_use: List[int], default=None
+        If not None, the task IDs in the list are used to determine which metatasks to load from path_to_metatasks.
     manual_filter_duplicates: bool, default=False
         If you want to manually filter duplicated base models. If True, an interactive session is started once needed.
     min_number_predictors: int, default=4
@@ -31,13 +35,15 @@ class BenchMaker:
         Must be set if remove_worse_than_random_predictors is True.
     """
 
-    def __init__(self, path_to_metatasks: str, output_path_benchmark_metatask: str,
+    def __init__(self, path_to_metatasks: str, output_path_benchmark_metatask: str, tasks_to_use: List[str] = None,
                  manual_filter_duplicates: bool = False, min_number_predictors: int = 4,
                  remove_constant_predictors: bool = False, remove_worse_than_random_predictors: bool = False,
-                 remove_bad_predictors: bool = False, metric_info: Tuple[Callable, str, bool] = None
-                 ):
+                 remove_bad_predictors: bool = False, metric_info: Tuple[Callable, str, bool] = None):
         # TODO: add path validation here
         self.valid_task_ids = get_id_and_validate_existing_data(path_to_metatasks)
+        if tasks_to_use is not None:
+            self.valid_task_ids = [t_id for t_id in self.valid_task_ids if t_id in tasks_to_use]
+
         self.path_to_metatasks = path_to_metatasks
         self.output_path_benchmark_metatask = output_path_benchmark_metatask
         self.manual_filter_duplicates = manual_filter_duplicates
@@ -59,7 +65,45 @@ class BenchMaker:
             self.metric_name = None
             self.metric_maximize = None
 
-    def build_benchmark(self):
+        # -- Other
+        self.tmp_dir = "bmer_tmp"
+
+    def build_benchmark(self, share_data: str = "no"):
+        """ Processes the metatasks according to the BenchMakers initialized settings. Moreover, store the new benchmark
+            metatasks in the appropriate repository and create a file (benchmark_details.json) containing all
+            relevant details about the benchmark.
+
+        Parameters
+        ----------
+        share_data: str in {"no", "openml", "share_prediction_data"}, default="no
+        Determine the strategy used to share the benchmark data.
+        *   "no" - no effort is undertake to make the data sharable. This can be used if the full benchmark task files
+                   (.csv and .json) are sharable without any license or distribution issues.
+        *   "openml" - We can use the OpenML platform to re-produce metatasks. This assumes that all predictors in a
+                       metatask are from OpenML (got via Assembled-OpenML) and that the dataset and task data are from
+                       an OpenML task. This allows to share (i.e., re-build) a metatasks by only sharing the
+                       benchmark_details.json.
+        *   "share_meta_data" - This options can be used when you are not able/allowed to share the dataset but
+                                can share the meta data like the prediction data or dataset metadata.
+                                One use case would be that you have used a dataset from OpenML, but computed all
+                                prediction data locally.
+
+                                    The shared meta data includes validation data (if available).
+                                    The shared meta data includes metadata about a dataset (feature names, ...).
+
+                                It will save the data that is to be shared in a .zip file under the
+                                output_path_benchmark_metatask directory. This .zip file together with the
+                                benchmark_details.json can be used to re-produce metatasks. The dataset is not part of
+                                the .zip or benchmark_details.json. To later fill the dataset into a task, our tools can
+                                get the dataset (e.g. via an OpenML task ID) or the dataset must be passed to our tools.
+        """
+
+        if share_data not in ["no", "openml", "share_prediction_data"]:
+            raise ValueError("Reproduce data is not a valid value. Got: {}".format(share_data))
+
+        if share_data == "share_prediction_data":
+            path_tmp_dir = Path(self.output_path_benchmark_metatask).joinpath(self.tmp_dir)
+            path_tmp_dir.mkdir(exist_ok=True)
 
         benchmark_valid_tasks = {}
         total_selection_constraints = {}
@@ -101,6 +145,11 @@ class BenchMaker:
                 total_selection_constraints[sel_cons].add(mt.selection_constraints[sel_cons])
             selection_constraints_per_task[task_id] = mt.selection_constraints
 
+            # -- Make data sharable
+            # For "no" and "openml", nothing needs to be done.
+            if share_data == "share_prediction_data":
+                mt.to_sharable_prediction_data(path_tmp_dir)
+
         # Post-process selection constraints away from set (otherwise not serializable)
         for sel_cons in total_selection_constraints.keys():
             total_selection_constraints[sel_cons] = list(total_selection_constraints[sel_cons])
@@ -108,6 +157,10 @@ class BenchMaker:
         # Inform user about results
         print("Found {} valid benchmarks with the following IDs: {}".format(len(benchmark_valid_tasks),
                                                                             benchmark_valid_tasks.keys()))
+
+        # Post-process sharable data
+        if share_data == "share_prediction_data":
+            self._post_process_data_sharing(path_tmp_dir)
 
         # Generate benchmark_detail and save them
         bm_ds = self.generate_benchmark_details(benchmark_valid_tasks, total_selection_constraints,
@@ -135,6 +188,10 @@ class BenchMaker:
             "selection_constraints_per_task": selection_constraints_per_task,
             "benchmark_search_parameters": self.benchmark_parameters
         }
+
+    def _post_process_data_sharing(self, path_tmp_dir):
+        shutil.make_archive(path_tmp_dir, 'zip', path_tmp_dir)
+        shutil.rmtree(path_tmp_dir)
 
 
 def get_id_and_validate_existing_data(path_to_metatasks):

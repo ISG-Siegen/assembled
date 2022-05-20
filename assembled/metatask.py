@@ -506,6 +506,15 @@ class MetaTask:
 
             json.dump(meta_data, f, ensure_ascii=False, indent=4)
 
+    def to_sharable_prediction_data(self, output_dir: str = ""):
+        """Store Metatasks without dataset (e.g., all data but self.dataset's rows)"""
+
+        # Remove all sensitive data from the dataset
+        self.dataset = self.dataset[0:0]
+
+        # Store the metatasks files
+        self.to_files(output_dir)
+
     # --- Code for Post Processing a Metatask after it was build
     def remove_predictors(self, predictor_names):
         rel_conf_and_pred_cols = self.get_pred_and_conf_cols(predictor_names)

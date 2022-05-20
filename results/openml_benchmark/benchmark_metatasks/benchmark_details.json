@@ -1668,6 +1668,7 @@
         "remove_bad_predictors": true,
         "score_metric": "openml_area_under_roc_curve",
         "score_metric_maximize": true,
-        "old_search_parameters": ["vba_sba_perf_gap_min", "vba_sba_sel_gap_min", "only_must_have_predictors"]
+        "old_search_parameters": ["vba_sba_perf_gap_min", "vba_sba_sel_gap_min", "only_must_have_predictors"],
+        "reproduce_data": "openml"
     }
 }
