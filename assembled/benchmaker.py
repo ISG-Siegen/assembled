@@ -29,7 +29,6 @@ class BenchMaker:
         The metric information required to determine performance.
         Must include a callable, a name, and whether the metric is to be optimized.
         Must be set if remove_worse_than_random_predictors is True.
-
     """
 
     def __init__(self, path_to_metatasks: str, output_path_benchmark_metatask: str,

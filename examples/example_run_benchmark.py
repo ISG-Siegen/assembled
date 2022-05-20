@@ -6,7 +6,8 @@ from ensemble_techniques.collect_ensemble_techniques import get_benchmark_techni
 if __name__ == "__main__":
 
     # --- Input para
-    valid_task_ids = get_valid_benchmark_ids()
+    path_to_benchmark_data = "../results/openml_benchmark/benchmark_metatasks"
+    valid_task_ids = get_valid_benchmark_ids(path_to_benchmark_data)
     test_split_frac = 0.5
 
     # This seed is used to create a random state for each individual technique. This random state is reproducible across
@@ -22,7 +23,7 @@ if __name__ == "__main__":
     nr_tasks = len(valid_task_ids)
     for task_nr, task_id in enumerate(valid_task_ids, start=1):
         mt = MetaTask()
-        mt.read_metatask_from_files("../results/benchmark_metatasks", task_id)
+        mt.read_metatask_from_files(path_to_benchmark_data, task_id)
         print("#### Process Task {} for dataset {} ({}/{}) ####".format(mt.openml_task_id, mt.dataset_name,
                                                                         task_nr, nr_tasks))
         out_path = "../results/benchmark_output/results_for_metatask_{}.csv".format(task_id)

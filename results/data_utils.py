@@ -6,7 +6,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.impute import SimpleImputer
 
 
-def get_valid_benchmark_ids(base_path="../results/benchmark_metatasks"):
+def get_valid_benchmark_ids(base_path):
     file_path_json = os.path.join(base_path, "benchmark_details.json")
     with open(file_path_json) as json_file:
         benchmark_meta_data = json.load(json_file)

@@ -6,9 +6,10 @@ from assembledopenml.compatibility.openml_metrics import OpenMLAUROC
 
 if __name__ == "__main__":
     # Setup analysis and eval tools
-    reser = Resulter(get_valid_benchmark_ids(), path_to_metatask="../results/benchmark_metatasks",
-                     path_to_benchmark_output="../results/benchmark_output")
-    plter = Ploter(path_to_plt_output="../results/evaluation")
+    reser = Resulter(get_valid_benchmark_ids("../results/openml_benchmark/benchmark_metatasks"),
+                     path_to_metatask="../results/openml_benchmark/benchmark_metatasks",
+                     path_to_benchmark_output="../results/openml_benchmark/benchmark_output")
+    plter = Ploter(path_to_plt_output="../results/openml_benchmark/evaluation")
     evler = Evaler()
     metric = OpenMLAUROC()
     metric_name = metric.name

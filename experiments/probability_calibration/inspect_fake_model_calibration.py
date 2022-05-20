@@ -9,7 +9,7 @@ from sklearn.calibration import CalibratedClassifierCV
 if __name__ == "__main__":
 
     # --- Input para
-    valid_task_ids = get_valid_benchmark_ids(base_path="../../results/benchmark_metatasks")
+    valid_task_ids = get_valid_benchmark_ids(base_path="../../results/openml_benchmark/benchmark_metatasks")
     test_split_frac = 0.5
     rng_seed = 3151278530
     test_split_rng = 581640921

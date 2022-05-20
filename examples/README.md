@@ -12,8 +12,8 @@
 * `example_openml_cc18.py`: An example on how to use the task IDs from the curated classification benchmark OpenML-CC18
   to build and save metatasks. As implied by one of the comments, you could also pass a list of task IDs by hand.
 * `example_rebuild_benchmark_data.py`: The code that can be used to re-build a benchmark from a `benchmark_details.json`
-  created by the benchmark set search code. This allows the user to get the exact same benchmark metatasks as created by
-  another user (assuming the metatasks were created via OpenML).
+  created by the benchmark set search code for OpenML tasks. This allows the user to get the exact same benchmark
+  metatasks as created by another user (assuming the metatasks were created via OpenML).
 * `example_run_benchmark.py`: Code that shows how to run a benchmark using metatasks and ensemble techniques. It uses
   the functionalities of a metataks to perform an evaluation. Moreover, it uses ensemble techniques (as initialized
   in `/ensemble_techniques/`). By default, the will save the output (ensemble techniques' predictions) in a directory.
