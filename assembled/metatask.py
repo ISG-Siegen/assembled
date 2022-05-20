@@ -793,7 +793,7 @@ class MetaTask:
                 tmp_df.reset_index().sort_values(by=["Index-Metatask"]).to_csv(out_path, index=False)
 
     def run_ensemble_on_all_folds(self, technique, technique_args: dict, technique_name,
-                                  use_validation_to_train_ensemble_techniques: bool = False,
+                                  use_validation_data_to_train_ensemble_techniques: bool = False,
                                   meta_train_test_split_fraction: float = 0.5, meta_train_test_split_random_state=0,
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
                                   label_encoder=False, fit_technique_on_original_data=False,
@@ -814,7 +814,7 @@ class MetaTask:
             The arguments that shall be supplied to the ensemble
         technique_name: str
             Name of the technique used to identify the technique later on in the saved results.
-        use_validation_to_train_ensemble_techniques: bool, default=False
+        use_validation_data_to_train_ensemble_techniques: bool, default=False
             Whether to use validation data to train the ensemble techniques (through the faked base models) and use the
             fold's prediction data to evaluate the ensemble technique.
             If True, the metataks requires validation data. If False, test predictions of a fold are split into
@@ -862,7 +862,7 @@ class MetaTask:
         #   Add safety check for file path here or something
         #   Check if probability_calibration has correct string names
         #   Check metric / scorer object
-        if use_validation_to_train_ensemble_techniques and (not self.use_validation_data):
+        if use_validation_data_to_train_ensemble_techniques and (not self.use_validation_data):
             raise ValueError("Metatask has no validation data but use_validation_to_train_ensemble_techniques is True.")
 
         # -- Iterate over Folds
@@ -880,7 +880,7 @@ class MetaTask:
                 X_test = preprocessor.transform(X_test)
 
             # -- Get Data to train and evaluate ensemble technique
-            if use_validation_to_train_ensemble_techniques:
+            if use_validation_data_to_train_ensemble_techniques:
                 # For use validation data, we have to simply select the data as it is given
                 #   TODO: add support for hold-out validation here (e.g. take only fold k=1 everytime)
 
@@ -943,8 +943,10 @@ class MetaTask:
 
             # -- Fit and Predict
             if fit_technique_on_original_data:  # not supported/used currently
+                raise NotImplementedError("Not fully tested yet, unknown how this should be used.")
+                # original data = data on which the base models have been fitted
                 # might not work as intended with fake models
-                ensemble_model.fit(X_train, y_train)
+                ensemble_model.fit(base_model_train_X, base_model_train_y)
             else:
                 ensemble_model.fit(ensemble_train_X, ensemble_train_y)
 

@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
-                                               use_validation_to_train_ensemble_techniques=True,
+                                               use_validation_data_to_train_ensemble_techniques=True,
                                                return_scores=OpenMLAUROC())
     print(fold_scores)
     print("Average Performance Ensemble Selection:", sum(fold_scores) / len(fold_scores))

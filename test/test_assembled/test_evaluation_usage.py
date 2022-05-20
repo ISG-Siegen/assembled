@@ -6,7 +6,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_predict, StratifiedKFold
 
 from assembled.metatask import MetaTask
-from assembledopenml.openml_assembler import init_dataset_from_task
+from sklearn.datasets import load_breast_cancer
 from assembledopenml.compatibility.openml_metrics import OpenMLAUROC
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 
@@ -57,13 +57,10 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed):
     test_confidences = np.array(test_confidences)
     test_predictions = np.array(test_predictions)
 
-    print(fold_perfs)
-    print("Average Performance Originally:", sum(fold_perfs) / len(fold_perfs))
-
-    return test_predictions, test_confidences, all_oof_data, classes_
+    return test_predictions, test_confidences, all_oof_data, classes_, fold_perfs
 
 
-def x_test_evaluation_with_validation_data():
+def test_evaluation_with_validation_data():
     # Control Randomness
     random_base_seed_models = 1
     random_base_seed_data = 0
@@ -72,8 +69,20 @@ def x_test_evaluation_with_validation_data():
     random_int_seed_inner_folds = base_rnger.randint(0, 10000000)
 
     # Build Metatask and fill dataset
+    task_data = load_breast_cancer(as_frame=True)
+    target_name = task_data.target.name
+    dataset_frame = task_data.frame
+    class_labels = task_data.target_names
+    feature_names = task_data.feature_names
+    cat_feature_names = []
+    # Make target column equal class labels again (inverse of label encoder)
+    dataset_frame[target_name] = class_labels[dataset_frame[target_name].to_numpy()]
     mt = MetaTask()
-    init_dataset_from_task(mt, 3)
+    mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
+                                feature_names=feature_names, cat_feature_names=cat_feature_names,
+                                task_type="classification", openml_task_id=-1,  # if not an OpenML task, use -X for now
+                                dataset_name="breast_cancer", folds_indicator=np.array([])
+                                )
     mt.read_randomness(random_int_seed_outer_folds, random_int_seed_inner_folds)
 
     # Get custom outer splits (not recommended for OpenML metatasks as it makes it less comparable to results on OpenML)
@@ -95,9 +104,12 @@ def x_test_evaluation_with_validation_data():
         ("RF_7", RandomForestClassifier(n_estimators=7, random_state=4)),
     ]
 
-    for bm_name, bm in base_models:
-        bm_predictions, bm_confidences, bm_validation_data, bm_classes = get_bm_data(mt, bm, preproc,
-                                                                                     random_int_seed_inner_folds)
+    expected_perf = np.empty(10)
+    expected_ind = np.array([0, 3, 3, 3, 2, 3, 2, 2, 3, 2])
+    for idx, (bm_name, bm) in enumerate(base_models):
+        bm_predictions, bm_confidences, bm_validation_data, bm_classes, fold_perfs = get_bm_data(mt, bm, preproc,
+                                                                                                 random_int_seed_inner_folds)
+        expected_perf[expected_ind == idx] = np.array(fold_perfs)[expected_ind == idx]
 
         # Sort data
         mt.add_predictor(bm_name, bm_predictions, confidences=bm_confidences, conf_class_labels=list(bm_classes),
@@ -111,17 +123,9 @@ def x_test_evaluation_with_validation_data():
 
     fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
-                                               use_validation_to_train_ensemble_techniques=True,
+                                               use_validation_data_to_train_ensemble_techniques=True,
                                                return_scores=OpenMLAUROC())
-    print(fold_scores)
-    print("Average Performance Fake Models:", sum(fold_scores) / len(fold_scores))
 
-
-x_test_evaluation_with_validation_data()
-
-
-"""
-[0.987476028335486, 0.967868185198231, 0.9901960784313725, 0.987476028335486, 0.9940119760479043, 0.9809400806230677, 0.9934210526315789, 0.9748660573589664, 0.9808540813110621, 0.9934640522875817]
-Average Performance Fake Models: 0.9850573620560736
-
-"""
+    # With the setup as it is (ensemble_size=1), the evaluation will select one of the base models per fold and create
+    # the best selection.
+    np.testing.assert_array_equal(fold_scores, expected_perf)

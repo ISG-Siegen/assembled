@@ -21,7 +21,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
     simulate_time : bool, default=False'
         Whether the fake mode should also fake the time it takes to fit and predict.
         Note: currently we are not compensating for the overhead of the simulation in anyway or form.
-              TODO: this is future work
+              TODO: this is future work; does not support validation data....
 
     Parameters that are Simulated Attributes
     ----------

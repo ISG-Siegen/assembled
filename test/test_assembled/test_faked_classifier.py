@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import time
 from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_predict
 from sklearn.dummy import DummyClassifier
 from sklearn.utils.validation import check_is_fitted, NotFittedError
 
@@ -53,6 +53,32 @@ class TestFakedClassifier:
         assert isinstance(fc.confidences_, np.ndarray)
         assert fc.predictions_.shape == (len(y_test),)
         assert fc.confidences_.shape == (len(y_test), 3)
+
+    def test_faked_classifier_predict_with_validation_data(self):
+        X, y = make_classification(n_samples=10000, n_features=10, n_informative=4, random_state=0, n_classes=3)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
+
+        clf = DummyClassifier()
+        val_confs = cross_val_predict(clf, X_train, y_train, cv=5, method="predict_proba")
+        clf.fit(X_train, y_train)
+        val_preds = clf.classes_.take(np.argmax(val_confs, axis=1), axis=0)
+        preds = clf.predict(X_test)
+        confs = clf.predict_proba(X_test)
+
+        # Concat as required
+        base_model_train_X = base_model_test_X = np.vstack((X_train, X_test))
+        base_model_known_predictions = np.hstack((val_preds, preds))
+        base_model_known_confidences = np.vstack((val_confs, confs))
+        base_model_train_y = np.hstack((y_train, y_test))
+
+        fc = FakedClassifier(base_model_test_X, base_model_known_predictions, base_model_known_confidences)
+
+        fc.fit(base_model_train_X, base_model_train_y)
+
+        assert np.array_equal(fc.predict(X_test), preds)
+        assert np.array_equal(fc.predict_proba(X_test), confs)
+        assert np.array_equal(fc.predict(X_train), val_preds)
+        assert np.array_equal(fc.predict_proba(X_train), val_confs)
 
     def test_faked_classifier_fit(self):
         X, y = make_classification(n_samples=1000, n_features=10, n_informative=4, random_state=0, n_classes=3)
@@ -114,4 +140,3 @@ class TestFakedClassifier:
 
         assert pred_time <= sim_pred_time
         assert confs_time <= sim_confs_time
-    
