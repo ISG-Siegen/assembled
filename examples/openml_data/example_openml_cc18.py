@@ -21,4 +21,4 @@ for t_idx, task_id in enumerate(task_list, 1):
     # Build meta-dataset for each task
     print("####### Process Task {} ({}/{}) #######".format(task_id, t_idx, len(task_list)))
     meta_task = omla.run(task_id)
-    meta_task.to_files(output_dir="../results/metatasks")
+    meta_task.to_files(output_dir="../../results/metatasks")

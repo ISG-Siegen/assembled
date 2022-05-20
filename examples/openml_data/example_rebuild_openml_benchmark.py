@@ -11,7 +11,7 @@ import json
 from assembledopenml.openml_assembler import OpenMLAssembler
 
 # -- Read Benchmark Details
-file_path_json = os.path.join("../results/openml_benchmark/benchmark_metatasks", "benchmark_details.json")
+file_path_json = os.path.join("../../results/openml_benchmark/benchmark_metatasks", "benchmark_details.json")
 
 with open(file_path_json) as json_file:
     benchmark_meta_data = json.load(json_file)
@@ -31,5 +31,5 @@ for task_nr, task_id in enumerate(valid_task_ids, start=1):
     mt = omla.rebuild(task_id, valid_predictors)
 
     # Store to file
-    mt.to_files("../results/openml_benchmark/benchmark_output")
+    mt.to_files("../../results/openml_benchmark/benchmark_output")
     print("Finished Task \n")
