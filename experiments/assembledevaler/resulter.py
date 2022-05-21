@@ -42,7 +42,8 @@ class Resulter:
                 data = json.load(json_file)
                 mtid_to_metadata[mt_id]["dataset_name"] = data["dataset_name"]
                 mtid_to_metadata[mt_id]["n_instances"] = len(data["folds"])
-
+                mtid_to_metadata[mt_id]["n_features"] = len(data["feature_names"])
+                mtid_to_metadata[mt_id]["n_classes"] = len(data["class_labels"])
         return mtid_to_metadata
 
     def read_benchmark_output_for_metatask(self, mt_id):
@@ -171,6 +172,15 @@ class Resulter:
         valid_dataset_names = [self.metatask_metadata[mt_id]["dataset_name"] for mt_id in reduce_to_ids]
 
         return fold_performance_data[fold_performance_data["Dataset"].isin(valid_dataset_names)]
+
+    def get_metatask_data(self, to_add_columns):
+
+        res = []
+        for mt_id in self.metatask_ids:
+            mt_metadata = self.metatask_metadata[mt_id]
+            res.append([mt_metadata["dataset_name"]] + [mt_metadata[col] for col in to_add_columns])
+
+        return pd.DataFrame(res, columns=["Dataset"] + [col for col in to_add_columns])
 
     # --- cache stuff
     @property

@@ -22,6 +22,9 @@ if __name__ == "__main__":
     fp_data = reser.get_relative_improvement_to_sb(fp_data, metric_name=metric_name,
                                                    sb_name=evler.sb_name)  # adds column "RI_SB"
 
+    mt_metadata = reser.get_metatask_data(["n_features", "n_instances", "n_classes"])
+    plter.instance_space_plot(fp_data, metric_name, mt_metadata)
+
     # -- Optional Preprocessing
     # fp_data = reser.filter_fp_data(fp_data, [3913, 3917, 10101])
 

@@ -2,6 +2,9 @@ import os
 from experiments.assembledevaler.plots.stripplots import draw_stripplot
 import matplotlib.pyplot as plt
 from autorank import plot_stats
+import pandas as pd
+import seaborn as sns
+from experiments.assembledevaler.evaler import fold_performance_data_to_fold_means
 
 
 class Ploter:
@@ -62,4 +65,18 @@ class Ploter:
         plt.title("Autorank Plot for Metric{}".format(ext))
         plt.tight_layout()
         plt.savefig(fig_save_path, bbox_inches="tight")
+        plt.show()
+
+    def instance_space_plot(self, fold_performance_data, metric_name, dataset_meta_data):
+
+        perf_data = fold_performance_data_to_fold_means(fold_performance_data, metric_name)
+
+        data = pd.merge(perf_data, dataset_meta_data, left_on="Dataset", right_on="Dataset", validate="many_to_one")
+        winner_data = pd.DataFrame(columns=data.columns)
+        for dataset_name in dataset_meta_data["Dataset"].tolist():
+            tmp_data = data[data["Dataset"] == dataset_name]
+            winner_data = winner_data.append(tmp_data.loc[tmp_data[metric_name].idxmax()])
+
+        sns.scatterplot("n_instances", "n_classes", data=winner_data, hue="Ensemble Technique")
+        plt.xscale('log')
         plt.show()

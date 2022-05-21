@@ -19,12 +19,6 @@ class Evaler:
 
     # -- Finding the Average Best Method using Ranking and Aggregation of Normalized Scores 
     @staticmethod
-    def fold_performance_data_to_fold_means(fold_performance_data, metric_name):
-        return fold_performance_data.drop(columns=["Fold"]).groupby(
-            by=["Dataset", "Ensemble Technique"]).aggregate("mean").reset_index()[
-            ["Dataset", "Ensemble Technique", metric_name]]
-
-    @staticmethod
     def transpose_means(data):
         re_data = data.pivot(index="Dataset", columns="Ensemble Technique")
         re_data.columns = re_data.columns.droplevel(0)
@@ -35,7 +29,7 @@ class Evaler:
                                                                                                   approach))
 
         # --- Transform fold_performance_data into data for autorank
-        rank_data = self.fold_performance_data_to_fold_means(fold_performance_data, metric_name)
+        rank_data = fold_performance_data_to_fold_means(fold_performance_data, metric_name)
         rank_data = self.transpose_means(rank_data)
 
         # - Drop Virtual Best because it is oracle-like
@@ -72,7 +66,7 @@ class Evaler:
     def wins_ties_losses(self, fold_performance_data, metric_name, metric_maximize):
         print("\n### Compute Wins/Ties/Losses (WTL) for metric {}...".format(metric_name))
 
-        perf_data = self.fold_performance_data_to_fold_means(fold_performance_data, metric_name)
+        perf_data = fold_performance_data_to_fold_means(fold_performance_data, metric_name)
         perf_data = self.transpose_means(perf_data)
 
         if self.vb_name in perf_data.columns:
@@ -121,7 +115,7 @@ class Evaler:
 
         print("\n### Compute Simple Mean over Techniques for metric {}...".format(metric_name))
 
-        mean_result = self.fold_performance_data_to_fold_means(fold_performance_data, metric_name).groupby(
+        mean_result = fold_performance_data_to_fold_means(fold_performance_data, metric_name).groupby(
             ["Ensemble Technique"]).aggregate("mean").reset_index().sort_values(by=[metric_name],
                                                                                 ascending=not metric_maximize)
         ordered_cols = mean_result[[metric_name, "Ensemble Technique"]]
@@ -150,3 +144,9 @@ class Evaler:
     # Algorithm Performance Variability
 
     # Distribution of best algorithms (average wins%)
+
+
+def fold_performance_data_to_fold_means(fold_performance_data, metric_name):
+    return fold_performance_data.drop(columns=["Fold"]).groupby(
+        by=["Dataset", "Ensemble Technique"]).aggregate("mean").reset_index()[
+        ["Dataset", "Ensemble Technique", metric_name]]
