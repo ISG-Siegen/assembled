@@ -39,7 +39,7 @@ class Evaler:
         rank_data = self.transpose_means(rank_data)
 
         # - Drop Virtual Best because it is oracle-like
-        if not keep_vb:
+        if (not keep_vb) and (self.vb_name in rank_data.columns):
             rank_data = rank_data.drop(columns=[self.vb_name])
         rank_data = rank_data.reset_index().drop(columns=["Dataset"])
 
@@ -74,7 +74,9 @@ class Evaler:
 
         perf_data = self.fold_performance_data_to_fold_means(fold_performance_data, metric_name)
         perf_data = self.transpose_means(perf_data)
-        perf_data = perf_data.drop(columns=[self.vb_name])
+
+        if self.vb_name in perf_data.columns:
+            perf_data = perf_data.drop(columns=[self.vb_name])
 
         # -- Get overall wins/ties/losses
         if metric_maximize:

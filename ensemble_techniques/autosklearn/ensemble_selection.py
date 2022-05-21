@@ -42,7 +42,7 @@ class EnsembleSelection(AbstractEnsemble):
 
     def __init__(self, base_models: List[Callable], ensemble_size: int, metric: AbstractMetric, bagging: bool = False,
                  mode: str = 'fast', random_state: Optional[Union[int, np.random.RandomState]] = None,
-                 use_best: bool = False) -> None:
+                 use_best: bool = False, predecessor_predictions: np.ndarray = None) -> None:
 
         super().__init__(base_models, "predict_proba", "predict_proba")
         self.ensemble_size = ensemble_size
@@ -50,6 +50,7 @@ class EnsembleSelection(AbstractEnsemble):
         self.bagging = bagging
         self.mode = mode
         self.use_best = use_best
+        self.predecessor_predictions = predecessor_predictions
 
         # Behaviour similar to sklearn
         #   int - Deteriministic with succesive calls to fit
@@ -71,19 +72,15 @@ class EnsembleSelection(AbstractEnsemble):
         if self.mode not in ('fast', 'slow'):
             raise ValueError('Unknown mode %s' % self.mode)
 
-        if self.bagging:
-            self._bagging(predictions, labels)
-        else:
-            self._fit(predictions, labels)
+        self._fit(predictions, labels)
+
         self._calculate_weights()
 
         return self
 
     def _fit(self, predictions: List[np.ndarray], labels: np.ndarray) -> AbstractEnsemble:
-        if self.mode == 'fast':
-            self._fast(predictions, labels)
-        else:
-            self._slow(predictions, labels)
+        self._fast(predictions, labels)
+
         return self
 
     def _fast(self, predictions: List[np.ndarray], labels: np.ndarray) -> None:
@@ -94,6 +91,7 @@ class EnsembleSelection(AbstractEnsemble):
         ensemble = []  # type: List[np.ndarray]
         trajectory = []
         order = []
+        add_predecessor_predictions = self.predecessor_predictions is not None
 
         ensemble_size = self.ensemble_size
 
@@ -135,6 +133,13 @@ class EnsembleSelection(AbstractEnsemble):
                     out=fant_ensemble_prediction
                 )
 
+                if add_predecessor_predictions:
+                    np.add(
+                        fant_ensemble_prediction,
+                        self.predecessor_predictions,
+                        out=fant_ensemble_prediction
+                    )
+
                 losses[j] = self.metric.to_loss(self.metric(labels, None, fant_ensemble_prediction))
 
             all_best = np.argwhere(losses == np.nanmin(losses)).flatten()
@@ -152,48 +157,6 @@ class EnsembleSelection(AbstractEnsemble):
         self.indices_ = order
         self.trajectory_ = trajectory
         self.train_loss_ = trajectory[-1]
-        self.apply_use_best()
-
-    def _slow(self, predictions: List[np.ndarray], labels: np.ndarray) -> None:
-        """Rich Caruana's ensemble selection method."""
-        self.num_input_models_ = len(predictions)
-
-        ensemble = []
-        trajectory = []
-        order = []
-
-        ensemble_size = self.ensemble_size
-
-        for i in range(ensemble_size):
-            losses = np.zeros(
-                [np.shape(predictions)[0]],
-                dtype=np.float64,
-            )
-            for j, pred in enumerate(predictions):
-                ensemble.append(pred)
-                ensemble_prediction = np.mean(np.array(ensemble), axis=0)
-                # calculate_loss is versatile and can return a dict of losses
-                # when scoring_functions=None, we know it will be a float
-                losses[j] = self.metric.to_loss(self.metric(labels, None, ensemble_prediction))
-                ensemble.pop()
-
-            best = np.nanargmin(losses)
-            ensemble.append(predictions[best])
-            trajectory.append(losses[best])
-            order.append(best)
-
-            # Handle special case
-            if len(predictions) == 1:
-                break
-
-        self.indices_ = np.array(
-            order,
-            dtype=np.int64,
-        )
-        self.trajectory_ = np.array(
-            trajectory,
-            dtype=np.float64,
-        )
         self.apply_use_best()
 
     def apply_use_best(self):
@@ -222,26 +185,6 @@ class EnsembleSelection(AbstractEnsemble):
             weights = weights / np.sum(weights)
 
         self.weights_ = weights
-
-    def _bagging(self, predictions: List[np.ndarray], labels: np.ndarray, fraction: float = 0.5,
-                 n_bags: int = 20, ) -> np.ndarray:
-        """Rich Caruana's ensemble selection method with bagging."""
-        raise ValueError('Bagging might not work with class-based interface!')
-        n_models = predictions.shape[0]
-        bag_size = int(n_models * fraction)
-
-        order_of_each_bag = []
-        for j in range(n_bags):
-            # Bagging a set of models
-            indices = sorted(random.sample(range(0, n_models), bag_size))
-            bag = predictions[indices, :, :]
-            order, _ = self._fit(bag, labels)
-            order_of_each_bag.append(order)
-
-        return np.array(
-            order_of_each_bag,
-            dtype=np.int64,
-        )
 
     def ensemble_predict(self, predictions: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
 
