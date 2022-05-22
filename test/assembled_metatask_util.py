@@ -12,7 +12,7 @@ def build_test_classification_metatask(sklearn_toy_dataset_func, id_to_use=-1):
     task_data = sklearn_toy_dataset_func(as_frame=True)
     target_name = task_data.target.name
     dataset_frame = task_data.frame
-    class_labels = task_data.target_names
+    class_labels = np.array([str(x) for x in task_data.target_names])
     feature_names = task_data.feature_names
     cat_feature_names = []
     # Make target column equal class labels again (inverse of label encoder)
