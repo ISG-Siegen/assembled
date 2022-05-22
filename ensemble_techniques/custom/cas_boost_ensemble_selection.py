@@ -248,6 +248,6 @@ def proba_gap_loss(label_indicators, bm_confs, wrong_prediction_penalty=0.4):
 
 
 # TODO ideas
-#   fix oscillating bug from predict and figure out what hte fian lweights will be with the minus  
+#   fix oscillating bug from predict and figure out what hte final weights will be with the minus
 #   smaller steps =5? what happens if steps=1?
 #   what is the acutal resulting weights vector in the end?

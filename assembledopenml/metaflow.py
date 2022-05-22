@@ -46,7 +46,8 @@ class MetaFlow:
         # -- Post Checks
         # Automatically fill description if it is None
         if self.description is None:
-            self.description = openml_get_flow(self.flow_id).name
+            tmp_f = openml_get_flow(self.flow_id)
+            self.description = "{}({})".format(tmp_f.name, tmp_f.version)
 
     @property
     def is_bad_flow(self):

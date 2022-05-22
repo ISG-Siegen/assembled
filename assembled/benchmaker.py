@@ -164,7 +164,7 @@ class BenchMaker:
 
         # Generate benchmark_detail and save them
         bm_ds = self.generate_benchmark_details(benchmark_valid_tasks, total_selection_constraints,
-                                                selection_constraints_per_task)
+                                                selection_constraints_per_task, share_data)
         file_path_json = os.path.join(self.output_path_benchmark_metatask, "benchmark_details.json")
         with open(file_path_json, 'w', encoding='utf-8') as f:
             json.dump(bm_ds, f, ensure_ascii=False, indent=4)
@@ -174,19 +174,20 @@ class BenchMaker:
 
         bm_paras = ["manual_filter_duplicates", "manual_filter_duplicates", "min_number_predictors",
                     "remove_constant_predictors", "remove_worse_than_random_predictors",
-                    "remove_bad_predictors", "metric_name", "metric_maximize"]
+                    "remove_bad_predictors", "metric_name", "metric_maximize", "tmp_dir"]
 
         return {k: getattr(self, k) for k in bm_paras}
 
     def generate_benchmark_details(self, task_ids_to_valid_predictors, total_selection_constraints,
-                                   selection_constraints_per_task):
+                                   selection_constraints_per_task, share_data):
 
         return {
             "valid_task_ids": list(task_ids_to_valid_predictors.keys()),
             "task_ids_to_valid_predictors": task_ids_to_valid_predictors,
             "total_selection_constraints": total_selection_constraints,
             "selection_constraints_per_task": selection_constraints_per_task,
-            "benchmark_search_parameters": self.benchmark_parameters
+            "benchmark_search_parameters": self.benchmark_parameters,
+            "share_data": share_data
         }
 
     def _post_process_data_sharing(self, path_tmp_dir):
@@ -228,3 +229,77 @@ def get_id_and_validate_existing_data(path_to_metatasks):
                                                                                                paths_tuple[1]))
     # - Only get task Ids
     return [p_vals[2].rsplit(sep="_", maxsplit=1)[-1] for p_vals in path_tuples]
+
+
+def load_benchmark_details(path_to_benchmark_details):
+    file_path_json = os.path.join(path_to_benchmark_details, "benchmark_details.json")
+
+    with open(file_path_json) as json_file:
+        benchmark_meta_data = json.load(json_file)
+
+    return benchmark_meta_data
+
+
+def rebuild_benchmark(output_path_benchmark_metatask: str, id_to_dataset_load_function: dict = None):
+    """Rebuild the benchmark data
+
+    Parameters
+    ----------
+    output_path_benchmark_metatask: str
+        Path to the directory in which the `benchmark_details.json` and bmer_timp.zip is stored.
+    id_to_dataset_load_function: dict, default=None
+        A dictionary with the keys being metatask IDs and the values being function that can be called to return
+        the dataset.
+    """
+
+    benchmark_data = load_benchmark_details(output_path_benchmark_metatask)
+    share_data = benchmark_data["share_data"]
+
+    if share_data == "openml":
+        _rebuild_from_openml(benchmark_data, output_path_benchmark_metatask)
+    elif share_data == "share_prediction_data":
+        _rebuild_from_share_prediction_data(benchmark_data, id_to_dataset_load_function, output_path_benchmark_metatask)
+    else:
+        raise ValueError("Unknown share_data value. Got: {}".format(share_data))
+
+
+def _rebuild_from_share_prediction_data(benchmark_data, id_to_dataset_load_function, output_path_benchmark_metatask):
+    # -- Unpack Shared Data
+    tmp_dir_name = benchmark_data["benchmark_search_parameters"]["tmp_dir"]
+    path_to_zip = os.path.join(output_path_benchmark_metatask, "{}.zip".format(tmp_dir_name))
+    path_to_tmp_dir = os.path.join(output_path_benchmark_metatask, tmp_dir_name)
+    shutil.unpack_archive(path_to_zip, path_to_tmp_dir, "zip")
+
+    try:
+        # -- Build Metatask
+        for task_id in benchmark_data["valid_task_ids"]:
+            mt = MetaTask()
+            dataset = id_to_dataset_load_function[task_id]()
+            mt.from_sharable_prediction_data(path_to_tmp_dir, task_id, dataset)
+            mt.to_files(output_path_benchmark_metatask)
+    finally:
+        # -- Clean up
+        shutil.rmtree(path_to_tmp_dir)
+
+
+def _rebuild_from_openml(benchmark_data, output_path_benchmark_metatask):
+    # We only import it now, because this way the whole class does not need it by default
+    from assembledopenml.openml_assembler import OpenMLAssembler
+
+    valid_task_ids = benchmark_data["valid_task_ids"]
+    task_ids_to_valid_predictors = benchmark_data["task_ids_to_valid_predictors"]
+    selection_constraints_per_task = benchmark_data["selection_constraints_per_task"]
+
+    for task_nr, task_id in enumerate(valid_task_ids, start=1):
+        print("#### Process Task {} ({}/{}) ####".format(task_id, task_nr, len(valid_task_ids)))
+        omla = OpenMLAssembler(openml_metric_name=selection_constraints_per_task[task_id]["openml_metric_name"],
+                               maximize_metric=selection_constraints_per_task[task_id]["maximize_metric"],
+                               nr_base_models=selection_constraints_per_task[task_id]["nr_base_models"])
+
+        # Crawl Metatask
+        valid_predictors = task_ids_to_valid_predictors[str(task_id)]
+        mt = omla.rebuild(task_id, valid_predictors)
+
+        # Store to file
+        mt.to_files(output_path_benchmark_metatask)
+        print("Finished Task \n")

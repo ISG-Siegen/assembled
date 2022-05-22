@@ -1,0 +1,68 @@
+{
+    "valid_task_ids": [
+        "-1",
+        "-2",
+        "-3",
+        "-4"
+    ],
+    "task_ids_to_valid_predictors": {
+        "-1": [
+            "RF_10",
+            "RF_100",
+            "RF_200",
+            "GB_10",
+            "GB_100"
+        ],
+        "-2": [
+            "RF_10",
+            "RF_100",
+            "RF_200",
+            "GB_10",
+            "GB_100"
+        ],
+        "-3": [
+            "RF_10",
+            "RF_100",
+            "RF_200",
+            "GB_10",
+            "GB_100"
+        ],
+        "-4": [
+            "RF_10",
+            "RF_100",
+            "RF_200",
+            "GB_10",
+            "GB_100"
+        ]
+    },
+    "total_selection_constraints": {
+        "manual": [
+            true
+        ]
+    },
+    "selection_constraints_per_task": {
+        "-1": {
+            "manual": true
+        },
+        "-2": {
+            "manual": true
+        },
+        "-3": {
+            "manual": true
+        },
+        "-4": {
+            "manual": true
+        }
+    },
+    "benchmark_search_parameters": {
+        "manual_filter_duplicates": false,
+        "min_number_predictors": 2,
+        "remove_constant_predictors": true,
+        "remove_worse_than_random_predictors": true,
+        "remove_bad_predictors": false,
+        "metric_name": "AUROC",
+        "metric_maximize": true,
+        "tmp_dir": "bmer_tmp"
+    },
+    "share_data": "share_prediction_data"
+}

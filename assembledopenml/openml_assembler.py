@@ -221,6 +221,7 @@ def init_dataset_from_task(meta_task: MetaTask, openml_task):
     feature_names.remove(target_name)  # Remove only afterwards, as indicator includes class
     task_id = openml_task.task_id
 
+    # -- Check Task type
     if openml_task.task_type_id is openml.tasks.TaskType.SUPERVISED_CLASSIFICATION:
         task_type = "classification"
     elif openml_task.task_type_id == openml.tasks.TaskType.SUPERVISED_REGRESSION:
@@ -282,6 +283,19 @@ def init_base_models_from_metaflows(meta_task: MetaTask, metaflows: List[MetaFlo
         # Other
         found_confidence_prefixes.add(meta_flow.conf_prefix)
 
+    # To avoid some bugs with index do this
+    meta_task.predictions_and_confidences = meta_task.predictions_and_confidences.reset_index(drop=True)
+
     # TODO, decide what to do with this: print(found_confidence_prefixes)
 
     return meta_task
+
+
+def task_to_dataset(openml_task):
+    if isinstance(openml_task, int):
+        openml_task = openml.tasks.get_task(openml_task)
+
+    # -- Get relevant data from task
+    dataset, _, _, _ = openml_task.get_dataset().get_data()
+
+    return dataset

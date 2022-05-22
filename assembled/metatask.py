@@ -53,7 +53,39 @@ class MetaTask:
         self.random_int_seed_inner_folds = None
 
         # -- Backwards Compatibility
-        self.missing_metadata_in_file = None
+        self.missing_metadata_in_file = []
+
+    def __eq__(self, other):
+        if self.__class__ != other.__class__:
+            return False
+
+        self_vals = self.__dict__
+        other_vals = other.__dict__
+
+        for attr in self_vals:
+
+            if attr not in other_vals:
+                return False
+
+            if isinstance(self_vals[attr], pd.DataFrame):
+                try:
+                    # Not using equals because of floating point errors
+                    pd.testing.assert_frame_equal(self_vals[attr], other_vals[attr],
+                                                  check_categorical=False)
+                    # Check_categorical is false because task build from raw openml data can have
+                    #   strange categorical values that do not exist in the dataset
+                    #       (like a category that never appears in the column or an order)
+
+                except AssertionError:
+                    return False
+            elif isinstance(self_vals[attr], np.ndarray):
+                if not np.array_equal(self_vals[attr], other_vals[attr]):
+                    return False
+            else:
+                if other_vals[attr] != self_vals[attr]:
+                    return False
+
+        return True
 
     @property
     def n_classes(self):
@@ -252,6 +284,10 @@ class MetaTask:
             # Assume it is an array-like, if not duck-typing will tell us
             predictions = pd.Series(predictions, name=predictor_name)
 
+        # Set as category if classification
+        if self.is_classification:
+            predictions = predictions.astype('category').cat.set_categories(conf_class_labels)
+
         # - Confidences to DataFrame
         if confidences is None:
             # TODO add code for regression and non-confidences data (fake confidences)
@@ -288,6 +324,9 @@ class MetaTask:
                 else:
                     # Assume it is an array-like, if not duck-typing will tell us
                     val_pred_data = pd.Series(val_preds, name=save_name)
+
+                if self.is_classification:
+                    val_pred_data = val_pred_data.astype('category').cat.set_categories(conf_class_labels)
 
                 # --- Val confidences
                 if val_confs is None:
@@ -455,8 +494,12 @@ class MetaTask:
         # -- Init Datasets
         self.dataset = meta_dataset[self.feature_names + [self.target_name]]
         self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
-        self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
-                                                                   self.validation_confidences_columns]
+
+        if self.validation_predictions_columns or self.validation_confidences_columns:
+            self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
+                                                                       self.validation_confidences_columns]
+        else:
+            self.validation_predictions_and_confidences = pd.DataFrame()
 
     def read_folds(self, fold_indicator: np.ndarray):
         """Read a new folds specification. The user must make sure that later data is added according to these folds.
@@ -514,6 +557,18 @@ class MetaTask:
 
         # Store the metatasks files
         self.to_files(output_dir)
+
+    def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
+        # Get Shared Data
+        self.read_metatask_from_files(input_dir, openml_task_id)
+
+        # Fill Dataset
+        if self.is_classification:
+            # Set target to cat
+            dataset[self.target_name] = dataset[self.target_name].astype("category")
+            dataset[self.target_name] = dataset[self.target_name].cat.set_categories(self.class_labels)
+
+        self.dataset.iloc[:] = dataset.iloc[:]
 
     # --- Code for Post Processing a Metatask after it was build
     def remove_predictors(self, predictor_names):
