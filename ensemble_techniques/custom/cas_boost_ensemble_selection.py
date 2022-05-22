@@ -115,9 +115,15 @@ class CascadedBoostedEnsembleSelection(AbstractEnsemble):
         # average = np.zeros_like(predictions[0], dtype=np.float64)
         tmp_predictions = np.zeros_like(predictions[0], dtype=np.float64)
 
+        added_values = []
+        pred_vector_through_time= []
         for weight_vector in self.weights_per_lvl_:
             mod_predictions = [p - tmp_predictions for p in predictions]
             np.add(tmp_predictions, self._es_predict(mod_predictions, weight_vector), out=tmp_predictions)
+
+
+            added_values.append(self._es_predict(mod_predictions, weight_vector))
+            pred_vector_through_time.append(np.copy(tmp_predictions))
 
         return tmp_predictions
 
@@ -238,3 +244,10 @@ def proba_gap_loss(label_indicators, bm_confs, wrong_prediction_penalty=0.4):
     # Combine collected information
     loss = 1 - conf_correct_class + additional_errors
     return _weighted_sum(loss, None, True)
+
+
+
+# TODO ideas
+#   fix oscillating bug from predict and figure out what hte fian lweights will be with the minus  
+#   smaller steps =5? what happens if steps=1?
+#   what is the acutal resulting weights vector in the end?
