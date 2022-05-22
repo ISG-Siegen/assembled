@@ -22,7 +22,7 @@ class TestBenchMaker:
                           remove_constant_predictors=True, tasks_to_use=mt_ids,
                           metric_info=(accuracy_score, "acc", True))
 
-        bmer.build_benchmark(share_data="share_prediction_data")
+        bmer.build_benchmark(share_data="share_meta_data")
 
         # -- Read Metatasks from the Benchmark
 

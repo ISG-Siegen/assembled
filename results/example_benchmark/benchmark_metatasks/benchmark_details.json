@@ -64,5 +64,5 @@
         "metric_maximize": true,
         "tmp_dir": "bmer_tmp"
     },
-    "share_data": "share_prediction_data"
+    "share_data": "share_meta_data"
 }

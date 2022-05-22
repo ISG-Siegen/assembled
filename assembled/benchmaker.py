@@ -90,6 +90,7 @@ class BenchMaker:
 
                                     The shared meta data includes validation data (if available).
                                     The shared meta data includes metadata about a dataset (feature names, ...).
+                                    The shared meta data includes prediction data (if available).
 
                                 It will save the data that is to be shared in a .zip file under the
                                 output_path_benchmark_metatask directory. This .zip file together with the
@@ -98,10 +99,10 @@ class BenchMaker:
                                 get the dataset (e.g. via an OpenML task ID) or the dataset must be passed to our tools.
         """
 
-        if share_data not in ["no", "openml", "share_prediction_data"]:
+        if share_data not in ["no", "openml", "share_meta_data"]:
             raise ValueError("Reproduce data is not a valid value. Got: {}".format(share_data))
 
-        if share_data == "share_prediction_data":
+        if share_data == "share_meta_data":
             path_tmp_dir = Path(self.output_path_benchmark_metatask).joinpath(self.tmp_dir)
             path_tmp_dir.mkdir(exist_ok=True)
 
@@ -147,7 +148,7 @@ class BenchMaker:
 
             # -- Make data sharable
             # For "no" and "openml", nothing needs to be done.
-            if share_data == "share_prediction_data":
+            if share_data == "share_meta_data":
                 mt.to_sharable_prediction_data(path_tmp_dir)
 
         # Post-process selection constraints away from set (otherwise not serializable)
@@ -159,7 +160,7 @@ class BenchMaker:
                                                                             benchmark_valid_tasks.keys()))
 
         # Post-process sharable data
-        if share_data == "share_prediction_data":
+        if share_data == "share_meta_data":
             self._post_process_data_sharing(path_tmp_dir)
 
         # Generate benchmark_detail and save them
@@ -257,7 +258,7 @@ def rebuild_benchmark(output_path_benchmark_metatask: str, id_to_dataset_load_fu
 
     if share_data == "openml":
         _rebuild_from_openml(benchmark_data, output_path_benchmark_metatask)
-    elif share_data == "share_prediction_data":
+    elif share_data == "share_meta_data":
         _rebuild_from_share_prediction_data(benchmark_data, id_to_dataset_load_function, output_path_benchmark_metatask)
     else:
         raise ValueError("Unknown share_data value. Got: {}".format(share_data))
