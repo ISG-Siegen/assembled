@@ -13,33 +13,72 @@ from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from results.data_utils import get_default_preprocessing
 import autosklearn.classification
 import shutil
+from joblib import dump, load
+import warnings
+import copy
+
+# from autosklearn.evaluation.train_evaluator import
+from autosklearn.evaluation.splitter import CustomStratifiedShuffleSplit, CustomStratifiedKFold
+
+
+def reproduce_ask_split(y, folds):
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            cv = StratifiedKFold(
+                n_splits=folds,
+                shuffle=True,
+                random_state=1,
+            )
+            test_cv = copy.deepcopy(cv)
+            next(test_cv.split(y, y))
+    except UserWarning as e:
+        print(e)
+        if 'The least populated class in y has only' in e.args[0]:
+            cv = CustomStratifiedKFold(
+                n_splits=folds,
+                shuffle=True,
+                random_state=1,
+            )
+        else:
+            raise e
+
+    order_ensemble_y = np.array([j for i in [list(test_idx) for train_idx, test_idx in cv.split(y, y)] for j in i])
+
+    return order_ensemble_y
+
 
 def get_bm_data_from_ask(metatask, inner_split_random_seed):
     bm_data = []
 
     for fold_idx, X_train, X_test, y_train, y_test in metatask._exp_yield_data_for_base_model_across_folds():
-        shutil.rmtree("tmp_model_data")  # clean up from previous
-        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=inner_split_random_seed)
-        automl = autosklearn.classification.AutoSklearnClassifier(time_left_for_this_task=60*60*60,
+        shutil.rmtree("tmp_model_data")  # clean up from previous (move to end with finally?)
+        automl = autosklearn.classification.AutoSklearnClassifier(time_left_for_this_task=60 * 60 * 60,
                                                                   tmp_folder="tmp_model_data",
                                                                   delete_tmp_folder_after_terminate=False,
-                                                                  ensemble_size=0,
-                                                                  initial_configurations_via_metalearning=2,
+                                                                  ensemble_size=1,
+                                                                  initial_configurations_via_metalearning=1,
                                                                   smac_scenario_args={'runcount_limit': 4},
-                                                                  resampling_strategy=cv)
-        automl.fit(X_train, y_train)
+                                                                  resampling_strategy='cv',
+                                                                  resampling_strategy_arguments={'folds': 5},
+                                                                  )
+        automl.fit(X_train.copy(), y_train.copy())
 
-
-        # Verfiy that y is equal to y and that our split was used 
-        true_order_ensemble_y = np.array([j for i in [list(y) for x,y in StratifiedKFold(n_splits=5, shuffle=True, random_state=inner_split_random_seed).split(X_train, y_train)] for j in i])
+        # --- Verify that we know the correct way the data was split
+        true_order_ensemble_y = reproduce_ask_split(y_train, 5)
         ensemble_y = np.load("tmp_model_data/.auto-sklearn/true_targets_ensemble.npy")
-        np.array_equal(np.unique(y_train, return_inverse=True)[1], ensemble_y[np.argsort(true_order_ensemble_y)])
+        if not np.array_equal(np.unique(y_train, return_inverse=True)[1],
+                              ensemble_y[np.argsort(true_order_ensemble_y)]):
+            raise ValueError("Something wrong with the validation data!")
 
-        #fold_predictions = automl.predict_proba(X_test)
-        np.load("tmp_model_data/.auto-sklearn/true_targets_ensemble.npy")
-        print()
+        # --- For each evaluated base model, store the predictions
+        for run_name in ["1_1_0.0"]:
+            oof_confs = np.load("tmp_model_data/.auto-sklearn/runs/{0}/predictions_ensemble_{0}.npy".format(run_name),
+                                allow_pickle=True)[true_order_ensemble_y]
+            clf = load("tmp_model_data/.auto-sklearn/runs/{0}/{0}.model".format(run_name))
+            test_conf = clf.fit(X_train.copy(), y_train.copy()).predict_proba(X_test)
 
-        print(automl.sprint_statistics())
+            # TODO get description / name from clf ; get predictions; store in list/object or add to metatask immediately
 
     # test_confidences = []
     # test_predictions = []
