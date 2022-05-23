@@ -19,7 +19,6 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed):
     original_indices = []
     all_oof_data = []
     fold_perfs = []
-    inner_split_rng = np.random.RandomState(inner_split_random_seed)
 
     for fold_idx, X_train, X_test, y_train, y_test in metatask._exp_yield_data_for_base_model_across_folds():
         # Get classes because not all bases models have this
@@ -33,7 +32,7 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed):
         # Get OOF Data (inner validation data)
         oof_confidences = cross_val_predict(base_model, X_train, y_train,
                                             cv=StratifiedKFold(n_splits=5, shuffle=True,
-                                                               random_state=inner_split_rng),
+                                                               random_state=inner_split_random_seed),
                                             method="predict_proba")
         oof_predictions = classes_.take(np.argmax(oof_confidences, axis=1), axis=0)
         oof_indices = list(train_ind)
