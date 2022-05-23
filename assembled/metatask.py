@@ -275,8 +275,6 @@ class MetaTask:
             raise ValueError("The name of the predictor already exist. Can not overwrite."
                              " The name must be unique. Got: {}".format(predictor_name))
 
-            # -- Build Data for Dataframe
-
         # - Predictions to Series with correct name
         if isinstance(predictions, pd.Series):
             predictions = predictions.rename(predictor_name)
@@ -310,7 +308,26 @@ class MetaTask:
             raise NotImplementedError("Automatic Description building is not yet supported. "
                                       "Please set the description by hand.")
 
-        # - Check, sort, and store the validation data
+        # -- Finalize / store prediction data
+        tmp_data = pd.concat([self.predictions_and_confidences, predictions, confidences], axis=1).reset_index()
+        # Verify integrity of index
+        if sum(tmp_data.index != tmp_data["index"]) != 0:
+            raise ValueError("Something went wrong with the index of the predictions data!")
+        else:
+            tmp_predictions_and_confidences = tmp_data.drop(columns=["index"])
+        self.predictions_and_confidences = tmp_predictions_and_confidences
+        del tmp_data
+
+        self.predictors.append(predictor_name)
+        self.confidences.extend(conf_col_names)
+        self.predictor_descriptions[predictor_name] = predictor_description
+
+        if bad_predictor:
+            self.bad_predictors.append(predictor_name)
+        if corruptions_details is not None:
+            self.predictor_corruptions_details[predictor_name] = corruptions_details
+
+        # -- Check, sort, and store the validation data
         if validation_data is not None:
             self.use_validation_data = True
 
@@ -359,24 +376,20 @@ class MetaTask:
                 val_pred_data = val_pred_data.sort_values(by="tmp_idx").drop(columns=["tmp_idx"]).reset_index(drop=True)
 
                 # --- Store Validation Data
-                self.validation_predictions_and_confidences = pd.concat(
-                    [self.validation_predictions_and_confidences, val_pred_data], axis=1)
+                tmp_data = pd.concat([self.validation_predictions_and_confidences, val_pred_data], axis=1).reset_index()
+                # Verify integrity of index
+                if sum(tmp_data.index != tmp_data["index"]) != 0:
+                    raise ValueError("Something went wrong with the index of the predictions data!")
+                else:
+                    tmp_data = tmp_data.drop(columns=["index"])
+                self.validation_predictions_and_confidences = tmp_data
 
-                # -- Add prediction data to metatask
+            # Re-order validation data to have identical order at all times
+            self.validation_predictions_and_confidences = self.validation_predictions_and_confidences[
+                self.validation_predictions_columns + self.validation_confidences_columns]
         else:
             if self.use_validation_data:
                 raise ValueError("Validation data is required if at least one other base model has validation!")
-
-        self.predictions_and_confidences = pd.concat([self.predictions_and_confidences, predictions, confidences],
-                                                     axis=1)
-        self.predictors.append(predictor_name)
-        self.confidences.extend(conf_col_names)
-        self.predictor_descriptions[predictor_name] = predictor_description
-
-        if bad_predictor:
-            self.bad_predictors.append(predictor_name)
-        if corruptions_details is not None:
-            self.predictor_corruptions_details[predictor_name] = corruptions_details
 
     def _check_and_init_ground_truth(self):
         # -- Process and Check ground truth depending on task type

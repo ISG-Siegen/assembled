@@ -202,11 +202,13 @@ def init_dataset_from_task(meta_task: MetaTask, openml_task):
 
     Parameters
     ----------
-    openml_task : OpenMLTask or int
+    openml_task : OpenMLTask or int or str
         The OpenML Task object for which we shall build a metatask.
         If int, we will first get the OpenMLTask for that id
     """
-    if isinstance(openml_task, int):
+    if isinstance(openml_task, (int, str)):
+        if isinstance(openml_task, str):
+            openml_task = int(openml_task)
         openml_task = openml.tasks.get_task(openml_task)
 
     # -- Get relevant data from task
@@ -283,16 +285,15 @@ def init_base_models_from_metaflows(meta_task: MetaTask, metaflows: List[MetaFlo
         # Other
         found_confidence_prefixes.add(meta_flow.conf_prefix)
 
-    # To avoid some bugs with index do this
-    meta_task.predictions_and_confidences = meta_task.predictions_and_confidences.reset_index(drop=True)
-
     # TODO, decide what to do with this: print(found_confidence_prefixes)
 
     return meta_task
 
 
 def task_to_dataset(openml_task):
-    if isinstance(openml_task, int):
+    if isinstance(openml_task, (int, str)):
+        if isinstance(openml_task, str):
+            openml_task = int(openml_task)
         openml_task = openml.tasks.get_task(openml_task)
 
     # -- Get relevant data from task
