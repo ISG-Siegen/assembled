@@ -1,8 +1,3 @@
-# Refactor TODO
-* evaluate with validation data by default if it is true 
-
-
-
 # Assembled
 
 Assembled is planed to be a framework for ensemble evaluation. It shall be able to run, benchmark, and evaluate ensemble
@@ -15,16 +10,16 @@ Currently, its main features are:
   Moreover, its class interface contains several useful method to simplify the evaluation and benchmarking of ensemble
   techniques. A collection of metatasks can be used to benchmark ensemble techniques without the computational overhead
   of training and evaluating base models.
-* **Assembled-OpenML**: an extension of Assembled to build metatasks with data from OpenML (its original design). Only a
-  OpenML Task ID must be passed to the code to generate a metatask for a specific OpenML task.
-  Technically, any ID can be passed. In practice, only supervised classification tasks are supported so far.
-  Moreover, this tool was build for and tested against curated benchmarks (like tasks in OpenMLCC-18). 
-  Other classification tasks should be supported as well but bugs might be more likely. 
-* **FakedClassifiers**: Code to simulate the behavior of a base model by passing it appropriate data during the
+* **Assembled-OpenML**: an extension of Assembled to build metatasks with data from OpenML. Only a OpenML Task ID must
+  be passed to the code to generate a metatask for a specific OpenML task. Technically, any ID can be passed. In
+  practice, only supervised classification tasks are supported so far. Moreover, this tool was build for and tested
+  against curated benchmarks (like tasks in OpenMLCC-18). Other classification tasks should be supported as well but
+  bugs might be more likely.
+* **FakedClassifiers**: Code to simulate the behavior of a base model by passing appropriate data to it during the
   initialization. Allows us to evaluate most ensemble techniques without code changes to the original implementation's
   code.
 * **Supporting Ensemble Techniques** We created code to make ensemble techniques usable with (pre-fitted) base models.
-  This is not part of Assembled itself but rather additional example on how to use ensemble techniques with Assembled. 
+  This is not part of Assembled itself but rather additional example on how to use ensemble techniques with Assembled.
   Some implementation support base models by default other do not. See `/ensemble_techniques/` for more details.
 
 Currently, is main use-cases are:
@@ -123,6 +118,17 @@ see `example_evaluation_and_analysis.py` to run our pre-defined evaluation code.
   fix such a case, we store these bad predictors in the Metatask object to be manually validated later on. Moreover,
   these predictors can be filtered from the Metatask if one wants to (we do this for every example or experiment).
 
+## A Comment on Validation Data
+
+By default and by design, Metatask created only from OpenML data do not have inner fold validation data. To train an
+ensemble techniques on metataks created only from OpenML data, we split a fold's predictions on the fold's test data of
+into ensemble_train and ensemble_test data. With ensemble_train being used to build/train the ensemble and ensemble_test
+being used to evaluate the ensemble.
+
+Alternatively, if a metatask and the base models stored in the metatask were initialized / created with validation data,
+we can also use the validation data to train the ensemble technique and then test it on all test data/predictions of a
+fold.
+
 ## Default Example Benchmark Settings
 
 ### OpenMLAssembler Settings
@@ -179,9 +185,14 @@ While in the root directory (and in the current environment), call:
 python -m pytest tests/
 ```
 
-## Some Notes on Design Decision 
-* We do not support repetitions in a metatask itself. We argue that in such case the repetitions are "outside" of the metatasks. In other words, to benchmark n-repeated k-fold we think it is more appropriate to create n metatasks instead of 1 containing all repetition data. Not sure if this is the best way to for the future but for now it is okay. 
-  * Including n-repeated in a metatask could be achieved by adding appropriate prefixes to the base models and making the fold_indicator a 2D array.  
+## Some Notes on Design Decision
+
+* We do not support repetitions in a metatask itself. We argue that in such case the repetitions are "outside" of the
+  metatasks. In other words, to benchmark n-repeated k-fold we think it is more appropriate to create n metatasks
+  instead of 1 containing all repetition data. Not sure if this is the best way for the future but for now it is
+  okay.
+    * Including n-repeated in a metatask could be achieved by adding appropriate prefixes to the base models and making
+      the fold_indicator a 2D array.
 
 # Known Issues
 
