@@ -145,6 +145,9 @@ class MetaTask:
         return [ele for slist in [[col_name, *[self.to_confidence_name(col_name, n) for n in self.class_labels]]
                                   for col_name in predictor_names] for ele in slist]
 
+    def get_conf_cols(self, predictor_names):
+        return [self.to_confidence_name(col_name, n) for n in self.class_labels for col_name in predictor_names]
+
     @property
     def validation_predictions_columns(self):
         return self.get_validation_predictions_columns(self.predictors)
@@ -153,8 +156,17 @@ class MetaTask:
         if not self.use_validation_data:
             return []
 
-        return [self.to_validation_predictor_name(pred_name, fold_idx) for pred_name in predictors for fold_idx in
-                range(self.max_fold + 1)]
+        return_val = []
+        for pred_name in predictors:
+            if pred_name in self.fold_predictors:
+                # Special case for fold predictors which only have validation data for the respective fold
+                return_val.append(self.to_validation_predictor_name(pred_name,
+                                                                    self.fold_predictor_name_to_fold_idx(pred_name)))
+            else:
+                return_val.extend([self.to_validation_predictor_name(pred_name, fold_idx)
+                                   for fold_idx in range(self.max_fold + 1)])
+
+        return return_val
 
     @property
     def validation_confidences_columns(self):
@@ -175,6 +187,12 @@ class MetaTask:
 
     def to_confidence_name(self, predictor_name, class_name):
         return "{}.{}.{}".format(self.confidence_prefix, class_name, predictor_name)
+
+    def fold_predictor_name_to_fold_idx(self, pred_name) -> str:
+        if pred_name not in self.fold_predictors:
+            raise ValueError("Unknown Fold Predictor Name. Got: {}".format(pred_name))
+
+        return pred_name[len(self.fold_predictor_prefix):].split(".", 1)[0]
 
     # --- Function to build a Metatask given data
     def init_dataset_information(self, dataset: pd.DataFrame, target_name: str, class_labels: List[str],
@@ -859,19 +877,37 @@ class MetaTask:
         """
 
         if fold_idx is None:
+            predictions_columns = self.predictors
+            confidences_columns = self.confidences
+
             validation_predictions_columns = self.validation_predictions_columns
             validation_confidences_columns = self.validation_confidences_columns
 
         else:
             if (fold_idx < 0) or fold_idx > self.max_fold:
                 raise ValueError("Fold index passed is not equal to an existing fold.")
+
+            # Handle Validation data
             validation_predictions_columns = [col_n for col_n in self.validation_predictions_columns
                                               if col_n.endswith(self.to_validation_predictor_name("", fold_idx))]
             validation_confidences_columns = [col_n for col_n in self.validation_confidences_columns
                                               if col_n.endswith(self.to_validation_predictor_name("", fold_idx))]
 
-        return meta_dataset[self.feature_names], meta_dataset[self.target_name], meta_dataset[self.predictors], \
-               meta_dataset[self.confidences], meta_dataset[validation_predictions_columns], \
+            # Handle Fold Predictors - add all normal predictors and fold predictors if the fold is correct
+            predictions_columns = []
+            for pred in self.predictors:
+                if pred not in self.fold_predictors:
+                    # Not a fold predictor
+                    predictions_columns.append(pred)
+                else:
+                    if pred.startswith(self.to_fold_predictor_name("", fold_idx)):
+                        # Fold predictor for the current fold
+                        predictions_columns.append(pred)
+
+            confidences_columns = self.get_conf_cols(predictions_columns)
+
+        return meta_dataset[self.feature_names], meta_dataset[self.target_name], meta_dataset[predictions_columns], \
+               meta_dataset[confidences_columns], meta_dataset[validation_predictions_columns], \
                meta_dataset[validation_confidences_columns]
 
     @staticmethod
@@ -1020,7 +1056,8 @@ class MetaTask:
             # -- Get Data from Metatask
             X_train, y_train, _, _, val_base_predictions, val_base_confidences = self.split_meta_dataset(train_metadata,
                                                                                                          fold_idx=idx)
-            X_test, y_test, test_base_predictions, test_base_confidences, _, _ = self.split_meta_dataset(test_metadata)
+            X_test, y_test, test_base_predictions, test_base_confidences, _, _ = self.split_meta_dataset(test_metadata,
+                                                                                                         fold_idx=idx)
 
             # -- Employ Preprocessing
             if preprocessor is not None:
