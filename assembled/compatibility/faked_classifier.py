@@ -278,7 +278,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
 # -- Additional Functions for FakedClassifiers Usage
 def initialize_fake_models(X_train, y_train, X_test, known_predictions, known_confidences, pre_fit_base_models,
-                           base_models_with_names, label_encoder, confidence_prefix):
+                           base_models_with_names, label_encoder, to_confidence_name):
     # Expect the predictions/confidences on the whole meta-data as input. Whereby meta-data is the data passed to
     #   the ensemble method.
 
@@ -286,8 +286,7 @@ def initialize_fake_models(X_train, y_train, X_test, known_predictions, known_co
 
     for model_name in list(known_predictions):  # known predictions is a dataframe
         # Sort Predictions to the default predict_proba style
-        model_confidences = known_confidences[["{}{}.{}".format(confidence_prefix, class_name, model_name)
-                                               for class_name in np.unique(y_train)]]
+        model_confidences = known_confidences[[to_confidence_name(model_name, class_name) for class_name in np.unique(y_train)]]
         model_predictions = known_predictions[model_name]
 
         # Fit the FakedClassifier

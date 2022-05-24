@@ -51,7 +51,7 @@ class TestMetaTask:
         mt.add_predictor("Dummy", bm_predictions, confidences=bm_confidence, conf_class_labels=list(classes),
                          predictor_description=str(bm), bad_predictor=True, corruptions_details={"confs_bad": True})
 
-        conf_cols = ["{}{}.{}".format(mt.confidence_prefix, n, "Dummy") for n in list(classes)]
+        conf_cols = [mt.to_confidence_name("Dummy", n) for n in list(classes)]
 
         assert "Dummy" in mt.predictors
         assert "Dummy" in list(mt.predictions_and_confidences)
@@ -153,8 +153,8 @@ class TestMetaTask:
                          predictor_description=str(bm), bad_predictor=True, corruptions_details={"confs_bad": True},
                          validation_data=all_oof_data)
 
-        val_col_preds = ["Dummy{}{}".format(mt.fold_postfix, i) for i in range(10)]
-        val_col_confs = ["{}{}.{}".format(mt.confidence_prefix, n, p_name) for n in
+        val_col_preds = [mt.to_validation_predictor_name("Dummy", i) for i in range(10)]
+        val_col_confs = [mt.to_confidence_name(p_name, n) for n in
                          mt.class_labels for p_name in val_col_preds]
 
         assert mt.use_validation_data

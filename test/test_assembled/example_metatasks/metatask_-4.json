@@ -39,7 +39,7 @@
         "GB_100": "HistGradientBoostingClassifier()"
     },
     "bad_predictors": [],
-    "confidence_prefix": "confidence.",
+    "confidence_prefix": "confidence",
     "feature_names": [
         "alcohol",
         "malic_acid",

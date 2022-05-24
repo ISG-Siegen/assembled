@@ -35,6 +35,7 @@ class MetaTask:
         self.predictors = []  # List of predictor names (aka base models)
         self.predictor_descriptions = {}  # Predictor names to descriptions (description could be the configuration)
         self.bad_predictors = []  # List of predictor names that have ill-formatted predictions or wrong data
+        self.fold_predictors = []
         self.predictor_corruptions_details = {}
         self.confidences = []  # List of column names of confidences
         self.validation_predictions_and_confidences = pd.DataFrame()
@@ -45,8 +46,9 @@ class MetaTask:
 
         # -- Other
         self.supported_task_types = {"classification", "regression"}
-        self.confidence_prefix = "confidence."
-        self.fold_postfix = ".fold"
+        self.confidence_prefix = "confidence"
+        self.fold_postfix = "fold"
+        self.fold_predictor_prefix = "FP"
 
         # -- Randomness
         self.random_int_seed_outer_folds = None
@@ -107,10 +109,10 @@ class MetaTask:
     @property
     def meta_data_keys(self):
         return ["openml_task_id", "dataset_name", "target_name", "class_labels", "predictors", "confidences",
-                "predictor_descriptions", "bad_predictors", "confidence_prefix", "feature_names",
+                "predictor_descriptions", "bad_predictors", "fold_predictors", "confidence_prefix", "feature_names",
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
                 "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
-                "folds"]
+                "folds", "fold_postfix", "fold_predictor_prefix"]
 
     @property
     def meta_data(self):
@@ -127,29 +129,6 @@ class MetaTask:
         self.dataset[self.target_name] = value
 
     @property
-    def confs_per_class_per_predictor(self):
-        """ Confidence-Class-Predictor Relationships
-
-        A dict of dicts detailing for each predictor name the relationship between the class labels and the column
-        names of confidences.
-        """
-        return {col_name: {n: "{}{}.{}".format(self.confidence_prefix, n, col_name) for n in self.class_labels}
-                for col_name in self.predictors}
-
-    @property
-    def pred_and_conf_cols(self):
-        # Predictor and confidence columns in a specific order 
-        return [ele for slist in [[col_name, *["{}{}.{}".format(self.confidence_prefix, n, col_name)
-                                               for n in self.class_labels]]
-                                  for col_name in self.predictors] for ele in slist]
-
-    def get_pred_and_conf_cols(self, predictor_names):
-        # return relevant predictor and confidence columns in a specific order
-        return [ele for slist in [[col_name, *["{}{}.{}".format(self.confidence_prefix, n, col_name)
-                                               for n in self.class_labels]]
-                                  for col_name in predictor_names] for ele in slist]
-
-    @property
     def non_cat_feature_names(self):
         return [f for f in self.feature_names if f not in self.cat_feature_names]
 
@@ -158,20 +137,44 @@ class MetaTask:
         return int(self.folds.max())
 
     @property
+    def pred_and_conf_cols(self):
+        return self.get_pred_and_conf_cols(self.predictors)
+
+    def get_pred_and_conf_cols(self, predictor_names):
+        # return relevant predictor and confidence columns in a specific order
+        return [ele for slist in [[col_name, *[self.to_confidence_name(col_name, n) for n in self.class_labels]]
+                                  for col_name in predictor_names] for ele in slist]
+
+    @property
     def validation_predictions_columns(self):
+        return self.get_validation_predictions_columns(self.predictors)
+
+    def get_validation_predictions_columns(self, predictors):
         if not self.use_validation_data:
             return []
 
-        return [pred_col + "{}{}".format(self.fold_postfix, i) for pred_col in self.predictors for i in
+        return [self.to_validation_predictor_name(pred_name, fold_idx) for pred_name in predictors for fold_idx in
                 range(self.max_fold + 1)]
 
     @property
     def validation_confidences_columns(self):
+        return self.get_validation_confidences_columns(self.predictors)
+
+    def get_validation_confidences_columns(self, predictors):
         if not self.use_validation_data:
             return []
 
-        return ["{}{}.{}".format(self.confidence_prefix, n, p_name) for n in
-                self.class_labels for p_name in self.validation_predictions_columns]
+        return [self.to_confidence_name(p_name, n) for n in self.class_labels
+                for p_name in self.get_validation_predictions_columns(predictors)]
+
+    def to_fold_predictor_name(self, predictor_name, fold_idx):
+        return "{}{}.{}".format(self.fold_predictor_prefix, fold_idx, predictor_name)
+
+    def to_validation_predictor_name(self, predictor_name, fold_idx):
+        return "{}.{}{}".format(predictor_name, self.fold_postfix, fold_idx)
+
+    def to_confidence_name(self, predictor_name, class_name):
+        return "{}.{}.{}".format(self.confidence_prefix, class_name, predictor_name)
 
     # --- Function to build a Metatask given data
     def init_dataset_information(self, dataset: pd.DataFrame, target_name: str, class_labels: List[str],
@@ -237,7 +240,8 @@ class MetaTask:
     def add_predictor(self, predictor_name: str, predictions: np.ndarray, confidences: Optional[np.ndarray] = None,
                       conf_class_labels: Optional[List[str]] = None, predictor_description: Optional[str] = None,
                       bad_predictor: bool = False, corruptions_details: Optional[dict] = None,
-                      validation_data: Optional[List[Tuple[int, np.ndarray, np.ndarray, np.ndarray]]] = None):
+                      validation_data: Optional[List[Tuple[int, np.ndarray, np.ndarray, np.ndarray]]] = None,
+                      fold_predictor: bool = False, fold_predictor_idx: Optional[int] = None):
         """Add a new predictor (base model) to the metatask
 
         Parameters
@@ -268,7 +272,20 @@ class MetaTask:
             We assume an input of a list of lists which contain: Tuple[the fold index, the predictions on the validation
             data, confidences on the validation data, indices of the validation data].
                 TODO: add support for hold-out validation (more to fill here, less to select at evaluation point)
+        fold_predictor: bool, default=False
+            Whether the predictor that is to be added, is only for a specific fold. If False, we assume the prediction
+            data of the predictor was computed for all folds while the predictor's configuration was consistent across
+            folds. If True, we add the predictor and its data only for one specific fold. That fold has to be specified
+            by fold_predictor_idx.
+        fold_predictor_idx: int, default=None
+            Required if fold_predictor is True. Specifies the fold index for which this predictors has been
+            computed.
         """
+
+        if confidences is None:
+            # TODO add code for regression and non-confidences data (fake confidences)
+            #   Goal would be to also have confidences for regression (CI interval or std)
+            raise NotImplementedError("We currently require confidences for a predictor! Sorry...")
 
         # -- Input Checks
         if conf_class_labels is not None:
@@ -279,18 +296,9 @@ class MetaTask:
         else:
             class_labels_to_use = self.class_labels
 
-        if predictor_name in self.predictors:
-            raise ValueError("The name of the predictor already exist. Can not overwrite."
-                             " The name must be unique. Got: {}".format(predictor_name))
-
         if predictor_description is None:
             raise NotImplementedError("Automatic Description building is not yet supported. "
                                       "Please set the description by hand.")
-
-        if confidences is None:
-            # TODO add code for regression and non-confidences data (fake confidences)
-            #   Goal would be to also have confidences for regression (CI interval or std)
-            raise NotImplementedError("We currently require confidences for a predictor! Sorry...")
 
         if validation_data is None and self.use_validation_data:
             raise ValueError("Validation data is required if at least one other base model has validation!")
@@ -300,8 +308,33 @@ class MetaTask:
                              "do not have validation data. We require this to be consistent - all predictors must have "
                              "validation data or no predictor must have validation data.")
 
-            # -- Preliminary Work
-        conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, predictor_name) for n in class_labels_to_use]
+        if (not fold_predictor) and (predictions.shape[0] != self.n_instances):
+            raise ValueError("Predictions are not for all instances of the dataset. "
+                             "Have {} instances, got {} predictions".format(self.n_instances, len(predictions)))
+        if confidences is not None:
+            if (not fold_predictor) and (confidences.shape[0] != self.n_instances):
+                raise ValueError("Confidences are not for all instances of the dataset. "
+                                 "Have {} instances, got {} confidences".format(self.n_instances, len(confidences)))
+            if confidences.shape[1] != self.n_classes:
+                raise ValueError("Confidences are not for all classes of the dataset. "
+                                 "Have {} classes, got {} confidences columns".format(self.n_classes,
+                                                                                      confidences.shape[1]))
+
+        if fold_predictor and (fold_predictor_idx is None):
+            raise ValueError("We require the fold index via the parameter fold_predictor_idx if the predictors and "
+                             "its data is only for a specific fold.")
+
+        # -- Preliminary Work
+        if fold_predictor:
+            # update predictor name
+            predictor_name = self.to_fold_predictor_name(predictor_name, fold_predictor_idx)
+            self.fold_predictors.append(predictor_name)
+
+        if predictor_name in self.predictors:
+            raise ValueError("The name of the predictor already exist. Can not overwrite."
+                             " The name must be unique. Got: {}".format(predictor_name))
+
+        conf_col_names = [self.to_confidence_name(predictor_name, n) for n in class_labels_to_use]
 
         # Add predictor data to metadata
         self.predictors.append(predictor_name)
@@ -314,9 +347,21 @@ class MetaTask:
             self.predictor_corruptions_details[predictor_name] = corruptions_details
 
         # -- Add normal prediction data
-        self.predictions_and_confidences = self._get_prediction_data(predictions, confidences, predictor_name,
-                                                                     class_labels_to_use, conf_col_names,
-                                                                     self.predictions_and_confidences.copy())
+        if not fold_predictor:
+            self.predictions_and_confidences = self._get_prediction_data(predictions, confidences, predictor_name,
+                                                                         class_labels_to_use, conf_col_names,
+                                                                         self.predictions_and_confidences.copy())
+        else:
+            other_indices, predicted_on_indices = self.get_indices_for_fold(fold_predictor_idx, return_indices=True)
+
+            self.predictions_and_confidences = self._get_prediction_data(predictions, confidences, predictor_name,
+                                                                         class_labels_to_use, conf_col_names,
+                                                                         self.predictions_and_confidences.copy(),
+                                                                         fold_data=True,
+                                                                         fold_data_arguments={
+                                                                             "non_used_indices": other_indices,
+                                                                             "used_indices": predicted_on_indices
+                                                                         })
 
         # -- Add validation data
         if validation_data is not None:
@@ -326,19 +371,18 @@ class MetaTask:
 
             for fold_idx, val_preds, val_confs, val_indices in validation_data:
                 # Fold preliminaries
-                save_name = predictor_name + "{}{}".format(self.fold_postfix, fold_idx)
-                val_conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, save_name) for n in
-                                      class_labels_to_use]
+                save_name = self.to_validation_predictor_name(predictor_name, fold_idx)
+                val_conf_col_names = [self.to_confidence_name(save_name, n) for n in class_labels_to_use]
                 non_val_indices = self.get_indices_for_fold(fold_idx, return_indices=True)[1]
 
                 # Get fold prediction data
                 tmp_val_data = self._get_prediction_data(val_preds, val_confs, save_name,
                                                          class_labels_to_use, val_conf_col_names,
                                                          tmp_val_data,
-                                                         validation_data=True,
-                                                         validation_data_arguments={
-                                                             "non_val_indices": non_val_indices,
-                                                             "val_indices": val_indices
+                                                         fold_data=True,
+                                                         fold_data_arguments={
+                                                             "non_used_indices": non_val_indices,
+                                                             "used_indices": val_indices
                                                          })
 
             # -- Post-processing of fold data
@@ -347,9 +391,22 @@ class MetaTask:
                                                                        self.validation_confidences_columns]
 
     def _get_prediction_data(self, predictions, confidences, predictor_name, class_labels_to_use, conf_col_names,
-                             current_prediction_data, validation_data: bool = False,
-                             validation_data_arguments: dict = None):
-        """Checks are formats prediction data where needed. Return contacted prediction data."""
+                             current_prediction_data, fold_data: bool = False,
+                             fold_data_arguments: dict = None):
+        """Checks are formats prediction data where needed. Return contacted prediction data.
+
+        Relevant Parameters
+        ----------
+        fold_data: bool, default=False
+            If True, we treat the prediction data like it has been computed only on a subset of all instances.
+            To do so, we fill the prediction data with nan values for every not-predicted-for instance.
+            This is later filtered by the evaluation code such that the nan values are ignored.
+        fold_data_arguments: dict, default=None
+            If fold_data is True, we require a dict of the form
+            {"non_used_indices": indices_1, "used_indices": indices_2}. Where indices_1 contains all the indices for
+            which the prediction data has not predictions and indices_2 all the indices for which the prediction data
+            has indices.
+        """
 
         # -- Handle Predictions
         # Predictions to Series with correct name
@@ -376,19 +433,19 @@ class MetaTask:
         pred_data = pd.concat([predictions, confidences], axis=1)
 
         # -- Special Handling for validation data
-        if validation_data:
+        if fold_data:
             # Fill indices for the part of the validation data does not cover
-            non_val_indices = validation_data_arguments["non_val_indices"]
-            val_indices = validation_data_arguments["val_indices"]
+            non_used_indices = fold_data_arguments["non_used_indices"]
+            used_indices = fold_data_arguments["used_indices"]
 
             # Build filler data
             val_pred_data_filler = pd.DataFrame()
             for col in pred_data.columns:
-                val_pred_data_filler[col] = np.full(len(non_val_indices), np.nan)
+                val_pred_data_filler[col] = np.full(len(non_used_indices), np.nan)
 
             # Add Tmp idx for later
-            pred_data["tmp_idx"] = val_indices
-            val_pred_data_filler["tmp_idx"] = non_val_indices
+            pred_data["tmp_idx"] = used_indices
+            val_pred_data_filler["tmp_idx"] = non_used_indices
 
             # Fill pred data with missing instances
             pred_data = pd.concat([pred_data, val_pred_data_filler], axis=0).sort_values(
@@ -604,6 +661,7 @@ class MetaTask:
         self.predictors = [pred for pred in self.predictors if pred not in predictor_names]
         self.confidences = [ele for ele in self.confidences if ele not in only_conf_cols]
         self.bad_predictors = [pred for pred in self.bad_predictors if pred not in predictor_names]
+        self.fold_predictors = [pred for pred in self.fold_predictors if pred not in predictor_names]
         for pred_name in predictor_names:
             # save delete, does not raise key error if not in dict if we use pop here
             self.predictor_descriptions.pop(pred_name, None)
@@ -611,13 +669,10 @@ class MetaTask:
 
         # Validation Data
         if self.use_validation_data:
-            val_pred_cols = ["{}{}{}".format(p_name, self.fold_postfix, i) for i in range(10) for p_name in
-                             predictor_names]
-            val_conf_cols = ["{}{}.{}".format(self.confidence_prefix, n, p_name) for n in
-                             self.class_labels for p_name in val_pred_cols]
+            val_pred_cols = self.get_validation_predictions_columns(predictor_names)
+            val_conf_cols = self.get_validation_confidences_columns(predictor_names)
             self.validation_predictions_and_confidences = self.validation_predictions_and_confidences.drop(
                 columns=val_pred_cols + val_conf_cols)
-
             # If last validation data base model was removed act on it
             if not self.validation_predictions_columns:
                 self.use_validation_data = False
@@ -811,9 +866,9 @@ class MetaTask:
             if (fold_idx < 0) or fold_idx > self.max_fold:
                 raise ValueError("Fold index passed is not equal to an existing fold.")
             validation_predictions_columns = [col_n for col_n in self.validation_predictions_columns
-                                              if col_n.endswith("{}{}".format(self.fold_postfix, fold_idx))]
+                                              if col_n.endswith(self.to_validation_predictor_name("", fold_idx))]
             validation_confidences_columns = [col_n for col_n in self.validation_confidences_columns
-                                              if col_n.endswith("{}{}".format(self.fold_postfix, fold_idx))]
+                                              if col_n.endswith(self.to_validation_predictor_name("", fold_idx))]
 
         return meta_dataset[self.feature_names], meta_dataset[self.target_name], meta_dataset[self.predictors], \
                meta_dataset[self.confidences], meta_dataset[validation_predictions_columns], \
@@ -987,9 +1042,9 @@ class MetaTask:
 
                 # Also need to combine predictions / confidences (keep as DF for columns)
                 # Have to rename columns to use DFs with validation data, here remove fold postfix to achieve this
-                p_rename = {col_name + "{}{}".format(self.fold_postfix, idx): col_name for col_name
+                p_rename = {self.to_validation_predictor_name(col_name, idx): col_name for col_name
                             in list(test_base_predictions)}
-                c_rename = {col_name + "{}{}".format(self.fold_postfix, idx): col_name for col_name
+                c_rename = {self.to_validation_predictor_name(col_name, idx): col_name for col_name
                             in list(test_base_confidences)}
                 base_model_known_predictions = pd.concat([val_base_predictions.rename(columns=p_rename),
                                                           test_base_predictions], axis=0)
@@ -1026,7 +1081,7 @@ class MetaTask:
             base_models = initialize_fake_models(base_model_train_X, base_model_train_y, base_model_test_X,
                                                  base_model_known_predictions, base_model_known_confidences,
                                                  pre_fit_base_models, base_models_with_names, label_encoder,
-                                                 self.confidence_prefix)
+                                                 self.to_confidence_name)
 
             # # -- Probability Calibration
             base_models = probability_calibration_for_faked_models(base_models, ensemble_train_X, ensemble_train_y,
@@ -1082,7 +1137,7 @@ class MetaTask:
         if preprocessor is not None:
             X = preprocessor.fit_transform(X)
         base_models = initialize_fake_models(X, y, X, base_predictions, base_confidences, pre_fit_base_models,
-                                             base_models_with_names, label_encoder, self.confidence_prefix)
+                                             base_models_with_names, label_encoder, self.to_confidence_name)
         return base_models, X, y
 
     def _exp_yield_evaluation_data_across_folds(self, meta_train_test_split_fraction,
@@ -1104,7 +1159,7 @@ class MetaTask:
 
             base_models = initialize_fake_models(X_train, y_train, X_test, test_base_predictions,
                                                  test_base_confidences, pre_fit_base_models, base_models_with_names,
-                                                 label_encoder, self.confidence_prefix)
+                                                 label_encoder, self.to_confidence_name)
 
             if include_test_data:
                 assert_meta_train_pred, assert_meta_test_pred, assert_meta_train_conf, \
