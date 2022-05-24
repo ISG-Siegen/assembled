@@ -177,7 +177,7 @@ def test_evaluation_with_validation_data_with_different_base_models_per_fold():
 
         classes_ = np.unique(y_train)
 
-        train_ind, test_ind = mt.get_indices_for_fold(fold_idx, return_indices=True)
+        train_ind, _ = mt.get_indices_for_fold(fold_idx, return_indices=True)
 
         # OOF Data
         oof_confidences = cross_val_predict(base_model, X_train, y_train,
