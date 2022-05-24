@@ -84,7 +84,7 @@ def get_bm_data_from_ask(metatask, tmp_folder_name="tmp_model_data"):
 
             # --- For each evaluated base model, store the predictions
             bm_dir_names = [os.path.basename(run_folder) for run_folder in
-                            glob.glob(os.path.join("tmp_model_data", ".auto-sklearn/runs/*"))][-1:]
+                            glob.glob(os.path.join("tmp_model_data", ".auto-sklearn/runs/*"))]
             for idx, run_name in enumerate(bm_dir_names):
                 print("## Processing Base Model {}/{} ##".format(idx + 1, len(bm_dir_names)))
 
