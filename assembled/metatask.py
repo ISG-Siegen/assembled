@@ -96,6 +96,10 @@ class MetaTask:
         return len(self.dataset)
 
     @property
+    def n_predictors(self):
+        return len(self.predictors)
+
+    @property
     def meta_dataset(self):
         return pd.concat([self.dataset, self.predictions_and_confidences, self.validation_predictions_and_confidences],
                          axis=1)
@@ -261,7 +265,7 @@ class MetaTask:
             predictor had to be fixed.
         validation_data: List[Tuple[int, array-like, array-like, array-like]], default=None
             The validation of the predictor for all folds.
-            We assume an input of a list of lists which contain: List[the fold index, the predictions on the validation
+            We assume an input of a list of lists which contain: Tuple[the fold index, the predictions on the validation
             data, confidences on the validation data, indices of the validation data].
                 TODO: add support for hold-out validation (more to fill here, less to select at evaluation point)
         """
@@ -271,53 +275,35 @@ class MetaTask:
             if not set(conf_class_labels) == set(self.class_labels):
                 raise ValueError("Unknown class labels as input. Expected: {}; Got: {}".format(self.class_labels,
                                                                                                conf_class_labels))
+            class_labels_to_use = conf_class_labels
+        else:
+            class_labels_to_use = self.class_labels
+
         if predictor_name in self.predictors:
             raise ValueError("The name of the predictor already exist. Can not overwrite."
                              " The name must be unique. Got: {}".format(predictor_name))
 
-        # - Predictions to Series with correct name
-        if isinstance(predictions, pd.Series):
-            predictions = predictions.rename(predictor_name)
-        else:
-            # Assume it is an array-like, if not duck-typing will tell us
-            predictions = pd.Series(predictions, name=predictor_name)
-
-        # Set as category if classification
-        if self.is_classification:
-            predictions = predictions.astype('category').cat.set_categories(conf_class_labels)
-
-        # - Confidences to DataFrame
-        if confidences is None:
-            # TODO add code for regression and non-confidences data (fake confidences)
-            raise NotImplementedError("We currently require confidences for a predictor! Sorry...")
-        else:
-            # Get names for conf columns
-            class_labels_to_use = conf_class_labels if conf_class_labels is not None else self.class_labels
-            conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, predictor_name) for n in class_labels_to_use]
-
-            # Get DF with names
-            if isinstance(confidences, pd.DataFrame):
-                re_name = {confidences.columns[i]: n for i, n in enumerate(conf_col_names)}
-                confidences = confidences.rename(re_name, axis=1)
-            else:
-                # Assume it is an array-like, if not duck-typing will tell us
-                confidences = pd.DataFrame(confidences, columns=conf_col_names)
-
-        # - Check description
         if predictor_description is None:
             raise NotImplementedError("Automatic Description building is not yet supported. "
                                       "Please set the description by hand.")
 
-        # -- Finalize / store prediction data
-        tmp_data = pd.concat([self.predictions_and_confidences, predictions, confidences], axis=1).reset_index()
-        # Verify integrity of index
-        if sum(tmp_data.index != tmp_data["index"]) != 0:
-            raise ValueError("Something went wrong with the index of the predictions data!")
-        else:
-            tmp_predictions_and_confidences = tmp_data.drop(columns=["index"])
-        self.predictions_and_confidences = tmp_predictions_and_confidences
-        del tmp_data
+        if confidences is None:
+            # TODO add code for regression and non-confidences data (fake confidences)
+            #   Goal would be to also have confidences for regression (CI interval or std)
+            raise NotImplementedError("We currently require confidences for a predictor! Sorry...")
 
+        if validation_data is None and self.use_validation_data:
+            raise ValueError("Validation data is required if at least one other base model has validation!")
+
+        if (validation_data is not None) and (self.n_predictors != 0) and (not self.use_validation_data):
+            raise ValueError("You are trying to add a predictor with validation data, but previous predictors "
+                             "do not have validation data. We require this to be consistent - all predictors must have "
+                             "validation data or no predictor must have validation data.")
+
+            # -- Preliminary Work
+        conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, predictor_name) for n in class_labels_to_use]
+
+        # Add predictor data to metadata
         self.predictors.append(predictor_name)
         self.confidences.extend(conf_col_names)
         self.predictor_descriptions[predictor_name] = predictor_description
@@ -327,69 +313,94 @@ class MetaTask:
         if corruptions_details is not None:
             self.predictor_corruptions_details[predictor_name] = corruptions_details
 
-        # -- Check, sort, and store the validation data
+        # -- Add normal prediction data
+        self.predictions_and_confidences = self._get_prediction_data(predictions, confidences, predictor_name,
+                                                                     class_labels_to_use, conf_col_names,
+                                                                     self.predictions_and_confidences.copy())
+
+        # -- Add validation data
         if validation_data is not None:
+            # (Re-)Mark validation data usage
             self.use_validation_data = True
+            tmp_val_data = self.validation_predictions_and_confidences.copy()
 
-            # Iterate over validation data and store
             for fold_idx, val_preds, val_confs, val_indices in validation_data:
+                # Fold preliminaries
                 save_name = predictor_name + "{}{}".format(self.fold_postfix, fold_idx)
+                val_conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, save_name) for n in
+                                      class_labels_to_use]
+                non_val_indices = self.get_indices_for_fold(fold_idx, return_indices=True)[1]
 
-                # --- Val predictions
-                if isinstance(val_preds, pd.Series):
-                    val_pred_data = val_preds.rename(save_name)
-                else:
-                    # Assume it is an array-like, if not duck-typing will tell us
-                    val_pred_data = pd.Series(val_preds, name=save_name)
+                # Get fold prediction data
+                tmp_val_data = self._get_prediction_data(val_preds, val_confs, save_name,
+                                                         class_labels_to_use, val_conf_col_names,
+                                                         tmp_val_data,
+                                                         validation_data=True,
+                                                         validation_data_arguments={
+                                                             "non_val_indices": non_val_indices,
+                                                             "val_indices": val_indices
+                                                         })
 
-                if self.is_classification:
-                    val_pred_data = val_pred_data.astype('category').cat.set_categories(conf_class_labels)
-
-                # --- Val confidences
-                if val_confs is None:
-                    raise NotImplementedError("We currently require validation confidences for a predictor! Sorry...")
-                else:
-                    class_labels_to_use = conf_class_labels if conf_class_labels is not None else self.class_labels
-                    val_conf_col_names = ["{}{}.{}".format(self.confidence_prefix, n, save_name) for n in
-                                          class_labels_to_use]
-
-                    # Get DF with names
-                    if isinstance(val_confs, pd.DataFrame):
-                        re_name = {val_confs.columns[i]: n for i, n in enumerate(val_conf_col_names)}
-                        val_confs = val_confs.rename(re_name, axis=1)
-                    else:
-                        # Assume it is an array-like, if not duck-typing will tell us
-                        val_confs = pd.DataFrame(val_confs, columns=val_conf_col_names)
-
-                    val_pred_data = pd.concat([val_pred_data, val_confs], axis=1)
-
-                # --- Preprocess data to be stored
-                remaining_indices = self.get_indices_for_fold(fold_idx, return_indices=True)[1]
-                val_pred_data_filler = pd.DataFrame()
-                for col in val_pred_data.columns:
-                    val_pred_data_filler[col] = np.full(len(remaining_indices), np.nan)
-
-                val_pred_data["tmp_idx"] = val_indices
-                val_pred_data_filler["tmp_idx"] = remaining_indices
-
-                val_pred_data = pd.concat([val_pred_data, val_pred_data_filler], axis=0)
-                val_pred_data = val_pred_data.sort_values(by="tmp_idx").drop(columns=["tmp_idx"]).reset_index(drop=True)
-
-                # --- Store Validation Data
-                tmp_data = pd.concat([self.validation_predictions_and_confidences, val_pred_data], axis=1).reset_index()
-                # Verify integrity of index
-                if sum(tmp_data.index != tmp_data["index"]) != 0:
-                    raise ValueError("Something went wrong with the index of the predictions data!")
-                else:
-                    tmp_data = tmp_data.drop(columns=["index"])
-                self.validation_predictions_and_confidences = tmp_data
-
+            # -- Post-processing of fold data
             # Re-order validation data to have identical order at all times
-            self.validation_predictions_and_confidences = self.validation_predictions_and_confidences[
-                self.validation_predictions_columns + self.validation_confidences_columns]
+            self.validation_predictions_and_confidences = tmp_val_data[self.validation_predictions_columns +
+                                                                       self.validation_confidences_columns]
+
+    def _get_prediction_data(self, predictions, confidences, predictor_name, class_labels_to_use, conf_col_names,
+                             current_prediction_data, validation_data: bool = False,
+                             validation_data_arguments: dict = None):
+        """Checks are formats prediction data where needed. Return contacted prediction data."""
+
+        # -- Handle Predictions
+        # Predictions to Series with correct name
+        if isinstance(predictions, pd.Series):
+            predictions = predictions.rename(predictor_name)
         else:
-            if self.use_validation_data:
-                raise ValueError("Validation data is required if at least one other base model has validation!")
+            # Assume it is an array-like, if not duck-typing will tell us
+            predictions = pd.Series(predictions, name=predictor_name)
+
+        # Set as category if classification
+        if self.is_classification:
+            predictions = predictions.astype('category').cat.set_categories(class_labels_to_use)
+
+        # -- Handle Confidences
+        # Confidences to DataFrame
+        if isinstance(confidences, pd.DataFrame):
+            re_name = {confidences.columns[i]: n for i, n in enumerate(conf_col_names)}
+            confidences = confidences.rename(re_name, axis=1)
+        else:
+            # Assume it is an array-like, if not duck-typing will tell us
+            confidences = pd.DataFrame(confidences, columns=conf_col_names)
+
+        # -- Unify Predictions data
+        pred_data = pd.concat([predictions, confidences], axis=1)
+
+        # -- Special Handling for validation data
+        if validation_data:
+            # Fill indices for the part of the validation data does not cover
+            non_val_indices = validation_data_arguments["non_val_indices"]
+            val_indices = validation_data_arguments["val_indices"]
+
+            # Build filler data
+            val_pred_data_filler = pd.DataFrame()
+            for col in pred_data.columns:
+                val_pred_data_filler[col] = np.full(len(non_val_indices), np.nan)
+
+            # Add Tmp idx for later
+            pred_data["tmp_idx"] = val_indices
+            val_pred_data_filler["tmp_idx"] = non_val_indices
+
+            # Fill pred data with missing instances
+            pred_data = pd.concat([pred_data, val_pred_data_filler], axis=0).sort_values(
+                by="tmp_idx").drop(columns=["tmp_idx"]).reset_index(drop=True)
+
+        # -- Concat and Verify integrity of index
+        tmp_data = pd.concat([current_prediction_data, pred_data], axis=1).reset_index()
+        if sum(tmp_data.index != tmp_data["index"]) != 0:
+            raise ValueError("Something went wrong with the index of the predictions data!")
+        tmp_predictions_and_confidences = tmp_data.drop(columns=["index"])
+
+        return tmp_predictions_and_confidences
 
     def _check_and_init_ground_truth(self):
         # -- Process and Check ground truth depending on task type
