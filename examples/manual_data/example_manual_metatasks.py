@@ -37,7 +37,7 @@ for i, sklearn_load_dataset_function in enumerate([load_breast_cancer, load_digi
     mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
                                 feature_names=feature_names, cat_feature_names=cat_feature_names,
                                 task_type="classification", openml_task_id=metatask_id,
-                                dataset_name="breast_cancer", folds_indicator=fold_indicators
+                                dataset_name=task_data.filename, folds_indicator=fold_indicators
                                 )
 
     # Get Cross-val-predictions for some base models
