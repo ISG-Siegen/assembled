@@ -28,7 +28,7 @@ Currently, is main use-cases are:
 
 This repository/branch also contains the Assembled-OpenML extension.
 
-## Assembled-OpenML
+### Assembled-OpenML
 
 _For the original code of the workshop paper on Assembled-OpenML, see the `automl_workshop_paper` branch_
 
@@ -41,17 +41,19 @@ Assembled-OpenML enables the user to quickly generate a benchmark set by enterin
 hand. It is affordable/efficient, because you do not need to train and evaluate the base models but can directly
 evaluate ensemble techniques.
 
-# For the User
-
 ## Installation
 
-The code in this repository was tested and developed for Python Version 3.9 on Linux and Windows. To install the
-requirements for all code stored in this repository, please set up a python environment with our `requirements.txt`. If
-needed, install Python or create a virtual environment.
+The code in this repository was tested and developed for Python Version 3.9 on Linux and Windows. If needed, install
+Python. Afterwards, please set up a python environment with our `requirements.txt` to install the requirements for all
+code stored in this repository.
 
-In the environment execute from the project root:
+An example workflow for the installation on Linux is:
 
 ```bash
+git clone https://github.com/ISG-Siegen/assembled.git
+cd assembled
+python3 -m venv venv_assembled
+source venv_assembled/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -111,7 +113,7 @@ see `example_evaluation_and_analysis.py` to run our pre-defined evaluation code.
 
 * **Regression is not supported** so far as OpenML has not enough data (runs) on Regression tasks. Would require some
   additional implementations.
-* Assembled-OpenML ignores OpenMl repetitions (most runs/datasets do not provide repetitions).
+* Assembled-OpenML ignores OpenML repetitions (most runs/datasets do not provide repetitions).
 * The file format for the predictions file is not fully standardized in OpenML and hence requires manually adjustment to
   all used formats. Hopefully, we found most of the relevant formats with Assembled-OpenML.
 * Some files, which store predictions, seem to have malicious or corrupted predictions/confidence values. If we can not
@@ -129,118 +131,6 @@ Alternatively, if a metatask and the base models stored in the metatask were ini
 we can also use the validation data to train the ensemble technique and then test it on all test data/predictions of a
 fold.
 
-## Default Example Benchmark Settings
+## Citation
 
-### OpenMLAssembler Settings
-
-* We only look at Tasks tagged with "OpenML-CC18".
-* We search for the 50 performing unique configurations (runs) based on the "area under roc curve" metric.
-
-### Post-Processing Settings - How we filter Metatasks and their Predictors
-
-Our benchmark set search script has several parameters to control our search procedure. We set the parameters to do the
-following:
-
-* The GAP between the performance of the VBA and SBA must be at least 5%.
-* The performance is based on OpenML's area_under_roc_curve
-* We require at least 10 base models to represent a valid metatask.
-* We filter bad base models (e.g. base models with corrupted and non-fixable prediction data). Bad base models have been
-  flagged during the creation of a metatask.
-* We filtered worse than random base models.
-
-### Resulting Task IDs and Predictors
-
-Please see `results/benchmark_metatasks/benchmark_details.json` for the full list of valid task IDs and valid predictors
-per task. This benchmark can be re-build with the exact same data (see `example_rebuild_benchmark_data.py` for details).
-
-### Benchmark Run and Supported Ensemble Techniques
-
-All details on already supported ensemble techniques and libraries (like sklearn or DESlib) can be found in the
-`ensemble_techniques` directory.
-
-It is important to note, that we utilize ensemble techniques of existing libraries and new/custom techniques through
-simulating base models based on our data. To execute ensemble techniques on our benchmark, we have created so-called "
-FakedClassifiers". These represent base models (sklearn estimators) to a library like sklearn or DESlib and thus allows
-us to use these natively. Employing these fake base models is the default case for our benchmark and all our code. We
-have also added a wrapper to use methods that only work with the predictions (like autosklearn's ensemble selection).
-
-The fake base models are created on-the-fly when you run the "run_ensemble_on_all_folds" function of a Metatask and then
-passed to the ensemble technique (we assume that a list of base models or something similar is the first argument of the
-technique's initialization).
-
-Please consult the first version of Assembled-OpenML (see the other branches) to see an alternative on how to use/create
-a benchmark of ensemble techniques that works with the data directly instead of base models.
-
-# For Developers
-
-This section is very much work in progress...
-
-## Unit Tests
-
-We use [py.test](https://docs.pytest.org/en/latest/) for unit testing.
-
-While in the root directory (and in the current environment), call:
-
-```bash
-python -m pytest tests/
-```
-
-## Pre commits
-
-Install the pre-commit hook while being in the environment with:
-
-```bash
-pre-commit install
-```
-
-Afterwards, each time you commit, the pre-commit hook will be executed.
-
-Use `pre-commit run --all-files` to run it for all files.
-
-Which hooks to use is still in debate. Not sure about mypy default etc.
-
-## Some Notes on Design Decision
-
-* We do not support repetitions in a metatask itself. We argue that in such case the repetitions are "outside" of the
-  metatasks. In other words, to benchmark n-repeated k-fold we think it is more appropriate to create n metatasks
-  instead of 1 containing all repetition data. Not sure if this is the best way for the future but for now it is
-  okay.
-    * Including n-repeated in a metatask could be achieved by adding appropriate prefixes to the base models and making
-      the fold_indicator a 2D array.
-
-# Known Issues
-
-## Confidence Values (Equal, ...)
-
-Assembled-OpenML collects data from OpenML. This data includes confidence values of base models for classes. These
-confidence values can be equal across all classes for multiple reasons (we made it equal to fix a bug; they were equal
-from the start; ...). Moreover, our code guarantees for collected data, that the confidence value of the predicted class
-is equal to the highest confidences. If the code can not guarantee this, the base model is marked in the .json file.
-
-This is very much relevant for anyone working with the prediction data. If you were to naively take the argmax of the
-confidences to get the prediction, the resulting prediction could be unequal to the prediction of the base model if
-multiple classes have the same highest confidence. For evaluation or other use-cases (like oracle-predictors), one needs
-to be careful with the argmax of the confidences to not run into problems resulting from a (wrong) difference between
-the argmax of the prediction and the actual prediction of a base model.
-
-## Executing Examples or Experiments in the CLI
-
-If you execute python scripts from the CLI (and not from an IDE) outside the root directory, the imports might not work.
-To avoid this, add the root directory to the PYTHONPATH (one possible solution).
-
-For example, to time the execution of the `example_rebuild_benchmark_data.py` while being in the `examples` directory:
-
-```bash
-time PYTHONPATH=~/path-to/assembled python example_rebuild_openml_benchmark.py
-```
-
-## Problems with Implementations of Ensemble Techniques
-
-Please see the README of the `ensemble_techniques` for more details on problems with the implementations of used
-ensemble techniques.
-
-# Documentation TODOs for the Future
-* Setup Docstring Documentation / Webpage
-* Make User and Developer Documentation Separate; add more details and examples -> extensive user / developer documentation
-* Refactor / Re-work unit test to exclude OpenML as much as possible and add more tests
-* Add CI: Automatic Testing; Releases
+The Paper related to Assembled-OpenML (the first version of this project) is not yet public.

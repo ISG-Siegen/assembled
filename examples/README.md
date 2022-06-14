@@ -35,3 +35,59 @@
 * `example_evaluation_and_analysis.py` The code runs an evaluation and analysis of the output of a benchmark (as created
   by the metatask evaluation functionality). Currently, it produces plots and data to determine the average best
   ensemble technique.
+
+## Default Example Benchmark Settings
+
+### OpenMLAssembler Settings
+
+* We only look at Tasks tagged with "OpenML-CC18".
+* We search for the 50 performing unique configurations (runs) based on the "area under roc curve" metric.
+
+### Post-Processing Settings - How we filter Metatasks and their Predictors
+
+Our benchmark set search script has several parameters to control our search procedure. We set the parameters to do the
+following:
+
+* The GAP between the performance of the VBA and SBA must be at least 5%.
+* The performance is based on OpenML's area_under_roc_curve
+* We require at least 10 base models to represent a valid metatask.
+* We filter bad base models (e.g. base models with corrupted and non-fixable prediction data). Bad base models have been
+  flagged during the creation of a metatask.
+* We filtered worse than random base models.
+
+### Resulting Task IDs and Predictors
+
+Please see `results/benchmark_metatasks/benchmark_details.json` for the full list of valid task IDs and valid predictors
+per task. This benchmark can be re-build with the exact same data (see `example_rebuild_benchmark_data.py` for details).
+
+# Known Issues
+
+## Confidence Values (Equal, ...)
+
+Assembled-OpenML collects data from OpenML. This data includes confidence values of base models for classes. These
+confidence values can be equal across all classes for multiple reasons (we made it equal to fix a bug; they were equal
+from the start; ...). Moreover, our code guarantees for collected data, that the confidence value of the predicted class
+is equal to the highest confidences. If the code can not guarantee this, the base model is marked in the .json file.
+
+This is very much relevant for anyone working with the prediction data. If you were to naively take the argmax of the
+confidences to get the prediction, the resulting prediction could be unequal to the prediction of the base model if
+multiple classes have the same highest confidence. For evaluation or other use-cases (like oracle-predictors), one needs
+to be careful with the argmax of the confidences to not run into problems resulting from a (wrong) difference between
+the argmax of the prediction and the actual prediction of a base model.
+
+## Executing Examples or Experiments in the CLI
+
+If you execute python scripts from the CLI (and not from an IDE) outside the root directory, the imports might not work.
+To avoid this, add the root directory to the PYTHONPATH (this is just one possible solution).
+
+For example, to execute the `example_rebuild_benchmark_data.py` while being in the `examples/openml_data`
+directory:
+
+```bash
+PYTHONPATH=../../ python example_rebuild_openml_benchmark.py
+```
+
+## Problems with Implementations of Ensemble Techniques
+
+Please see the README of the `ensemble_techniques` for more details on problems with the implementations of used
+ensemble techniques.

@@ -1,5 +1,20 @@
 # Assembled's Supported Ensemble Techniques
 
+It is important to note, that we utilize ensemble techniques of existing libraries and new/custom techniques through
+simulating base models based on our data. To execute ensemble techniques on our benchmark, we have created so-called "
+FakedClassifiers". These represent base models (sklearn estimators) to a library like sklearn or DESlib and thus allows
+us to use these natively. Employing these fake base models is the default case for our benchmark and all our code. We
+have also added a wrapper to use methods that only work with the predictions (like autosklearn's ensemble selection).
+
+The fake base models are created on-the-fly when you run the "run_ensemble_on_all_folds" function of a Metatask and then
+passed to the ensemble technique (we assume that a list of base models or something similar is the first argument of the
+technique's initialization).
+
+Please consult the first version of Assembled-OpenML (see the other branches) to see an alternative on how to use/create
+a benchmark of ensemble techniques that works with the data directly instead of base models.
+
+## Overview
+
 This directory contains all supported ensemble techniques as well as code to enable their usage. The code for the
 FakedClassifiers and other compatability utilities can be found in the `assembled` directory.
 
