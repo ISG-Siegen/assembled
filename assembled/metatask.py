@@ -293,6 +293,9 @@ class MetaTask:
         self.openml_task_id = openml_task_id
         self.read_folds(folds_indicator)
 
+        # -- Re-order dataset for common standard
+        self.dataset = self.dataset[feature_names + [self.target_name]]
+
         # Handle task type
         self.task_type = task_type
         if task_type not in self.supported_task_types:
