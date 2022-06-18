@@ -9,7 +9,7 @@ from sklearn.calibration import CalibratedClassifierCV
 
 
 class FakedClassifier(BaseEstimator, ClassifierMixin):
-    """ A fake classifier that simulates a real classifier from the prediction data of the real classifier.
+    """A fake classifier that simulates a real classifier from the prediction data of the real classifier.
 
         We assume the input passed to init is the same format as training X (will be validated in predict).
         We store the prediction data with an index whereby the index is the hash of an instance.
@@ -277,29 +277,48 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
 
 # -- Additional Functions for FakedClassifiers Usage
-def initialize_fake_models(X_train, y_train, X_test, known_predictions, known_confidences, pre_fit_base_models,
-                           base_models_with_names, label_encoder, to_confidence_name):
-    # Expect the predictions/confidences on the whole meta-data as input. Whereby meta-data is the data passed to
-    #   the ensemble method.
+def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, val_base_model_train_X,
+                            val_base_model_train_y, known_X, known_predictions, known_confidences, pre_fit_base_models,
+                            base_models_with_names, label_encoder, to_confidence_name):
+    # !WARNING!: Long text to explain to myself why the following works
+    # Theoretically, we would need to build two separate base model sets for validation and test, because the base
+    #   models might have been fitted differently for the validation predictions and test predictions.
+    #   (unless we take the validation data from the test predictions like in the no-validation-data case)
+    # However, in our "lookup-table-like" fake base model, the fit method validates that the number of features
+    #   is correct. Which it must be for both cases in our setup. Otherwise it would be a bug.
+    #   Moreover, in classification it uses np.unique(y) to find the classes used to convert the predictions. This is,
+    #   however, always the same for val_y and test_y because we are always doing a stratified splits and a validation
+    #   split with only 1 class in it would be ill-defined. Hence, we can assume that np.unique(y) is identical for
+    #   val_fit and test_fit.
+    # In short, in our simulation the difference between data used to fit the base model for validation or test (outer
+    #   evaluation) can be ignored. The base model can be (pre-)fitted on either validation or test data.
+    # It is only important that known_X contains all instances and known_predictions/confidences all output values
+    #   that would be needed during prediction for validation (ensemble fit) or outer evaluation (ensemble predict)
 
+    # -- Set values to one of validation or training data here
+    classes_ = np.unique(test_base_model_train_y)
+    X_train = test_base_model_train_X
+    y_train = test_base_model_train_y
+
+    # - Sanity Check to make sure we are not in an ill-defined split and everything described as above holds
+    #   (is technically a large overhead but my sanity is more important than the code's efficiency)
+    if list(classes_) != list(np.unique(val_base_model_train_y)):
+        raise ValueError("Classes found in Validation and Test data used to fit the base model are not identical. "
+                         + "Something went wrong and I can not tell you where.")
+
+    # -- Build fake base models
     faked_base_models = []
 
-    for model_name in list(known_predictions):  # known predictions is a dataframe
-        # Sort Predictions to the default predict_proba style
-        model_confidences = known_confidences[[to_confidence_name(model_name, class_name) for class_name in np.unique(y_train)]]
+    for model_name in list(known_predictions):
+        # Sort Predictions to the default predict_proba style and get predictions + confidences for a specific model
+        model_confidences = known_confidences[[to_confidence_name(model_name, class_name) for class_name in classes_]]
         model_predictions = known_predictions[model_name]
 
         # Fit the FakedClassifier
-        fc = FakedClassifier(X_test, model_predictions, model_confidences, label_encoder=label_encoder)
+        fc = FakedClassifier(known_X, model_predictions, model_confidences, label_encoder=label_encoder)
 
         # -- Set fitted or not (sklearn vs. deslib)
         if pre_fit_base_models:
-            # fix input type
-            if isinstance(X_train, pd.DataFrame):
-                X_train = X_train.to_numpy()
-            if isinstance(y_train, pd.Series):
-                y_train = y_train.to_numpy()
-
             fc.fit(X_train, y_train)
 
         # -- Set result output (sklearn vs. deslib)

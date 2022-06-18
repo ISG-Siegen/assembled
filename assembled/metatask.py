@@ -3,7 +3,7 @@ import numpy as np
 import os
 import json
 
-from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, initialize_fake_models
+from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, _initialize_fake_models
 from typing import List, Tuple, Optional, Callable, Union
 from sklearn.model_selection import train_test_split
 
@@ -43,6 +43,7 @@ class MetaTask:
         self.confidences = []  # List of column names of confidences
         self.validation_predictions_and_confidences = pd.DataFrame()
         self.use_validation_data = False
+        self.validation_indices = {}
 
         # -- Selection constrains (used to find the data of this metatask)
         self.selection_constraints = {}
@@ -87,6 +88,21 @@ class MetaTask:
             elif isinstance(self_vals[attr], np.ndarray):
                 if not np.array_equal(self_vals[attr], other_vals[attr]):
                     return False
+            elif isinstance(self_vals[attr], dict):
+                # Check for dicts (required due to ndarray)
+                self_dict = self_vals[attr]
+                other_dict = other_vals[attr]
+                if self_dict.keys() != other_dict.keys():
+                    return False
+
+                for k in self_dict.keys():
+                    self_dict_val = self_dict[k]
+                    if isinstance(self_dict_val, np.ndarray):
+                        if not np.array_equal(self_dict_val, other_dict[k]):
+                            return False
+                    else:
+                        if self_dict_val != other_dict[k]:
+                            return False
             else:
                 if other_vals[attr] != self_vals[attr]:
                     return False
@@ -143,7 +159,7 @@ class MetaTask:
                 "predictor_descriptions", "bad_predictors", "fold_predictors", "confidence_prefix", "feature_names",
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
                 "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
-                "folds", "fold_postfix", "fold_predictor_prefix"]
+                "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices"]
 
     # -- Properties related to meta_dataset
     @property
@@ -345,10 +361,12 @@ class MetaTask:
         ----------
         predictor_name: str
             name of the predictor; must be unique within a given metatask! (Overwriting is not supported yet)
-        predictions: array-like, (n_samples,)
-            Cross-val-predictions for the predictor that correspond to the fold_indicators of the metatask
-        confidences: array-like, Optional, (n_samples, n_classes), default=None
+        predictions: array-like, (n_samples,) or (n_fold_samples,)
+            Cross-val-predictions for the predictor that correspond to the fold_indicators of the metatask.
+            If fold_predictor, it only needs to contain the predictors for the specific fold.
+        confidences: array-like, Optional, (n_samples, n_classes) or (n_fold_samples, n_classes), default=None
             Confidences of the prediction. If None, due to Regression tasks or no confidences, use default confidences.
+            If fold_predictor, it only needs to contain the confidences for the specific fold.
         conf_class_labels: List[str], Optional, default = None
             The order of the class labels in that the confidences are passed to this function.
             It must contain the same labels as self.class_labels but can be in a different order!
@@ -365,10 +383,12 @@ class MetaTask:
             for later on the predictor. E.g., Assembled-OpenML uses this to store whether the confidences values of the
             predictor had to be fixed.
         validation_data: List[Tuple[int, array-like, array-like, array-like]], default=None
-            The validation of the predictor for all folds.
+            The validation data of the predictor for all relevant folds. If fold_predictor, the list only needs to
+            contain the entry for the fold_predictor's fold.
             We assume an input of a list of lists which contain: Tuple[the fold index, the predictions on the validation
             data, confidences on the validation data, indices of the validation data].
-                TODO: add support for hold-out validation (more to fill here, less to select at evaluation point)
+            Validation data can be all training data instances or a subset of all training data instances.
+            We expect that the instances used for validation are identical for all predictors of a metatask.
         fold_predictor: bool, default=False
             Whether the predictor that is to be added, is only for a specific fold. If False, we assume the prediction
             data of the predictor was computed for all folds while the predictor's configuration was consistent across
@@ -467,10 +487,31 @@ class MetaTask:
             tmp_val_data = self.validation_predictions_and_confidences.copy()
 
             for fold_idx, val_preds, val_confs, val_indices in validation_data:
-                # Fold preliminaries
+                # -- Fold preliminaries
                 save_name = self.to_validation_predictor_name(predictor_name, fold_idx)
                 val_conf_col_names = [self.to_confidence_name(save_name, n) for n in class_labels_to_use]
-                non_val_indices = self.get_indices_for_fold(fold_idx, return_indices=True)[1]
+                potential_val_indices, non_val_indices = self.get_indices_for_fold(fold_idx, return_indices=True)
+
+                # -- Verify that validation indices are identical to previous seen indices of this fold
+                known_val_indices_for_fold = self.validation_indices.get(fold_idx, None)
+                if known_val_indices_for_fold is None:
+                    self.validation_indices[fold_idx] = val_indices
+                else:
+                    if (np.sort(val_indices) != np.sort(known_val_indices_for_fold)).any():
+                        raise ValueError("Input Validation indices for fold {} ".format(fold_idx)
+                                         + "are not identical to previous seen validation indices for this fold.")
+
+                # -- Make sure val_indices is an array
+                if (not isinstance(val_indices, np.ndarray)) and isinstance(val_indices, list):
+                    val_indices = np.array(val_indices)
+
+                # -- Sanity Check: validation indices can not be indices from the test set!
+                if np.intersect1d(val_indices, non_val_indices).size != 0:
+                    raise ValueError("Validation indices contain indices from the test set of the current fold!")
+
+                # -- Find elements that are not in the validation data (e.g. in the case of holdout)
+                additional_non_val_indices = np.setdiff1d(potential_val_indices, val_indices)
+                non_val_indices = np.append(non_val_indices, additional_non_val_indices)
 
                 # Get fold prediction data
                 tmp_val_data = self._get_prediction_data(val_preds, val_confs, save_name,
@@ -631,7 +672,10 @@ class MetaTask:
 
         with open(file_path_json, 'w', encoding='utf-8') as f:
             meta_data = self.meta_data
-            meta_data["folds"] = meta_data["folds"].tolist()  # make it serializable
+
+            # make some objects serializable
+            meta_data["folds"] = meta_data["folds"].tolist()
+            meta_data["validation_indices"] = {k: v.tolist() for k, v in meta_data["validation_indices"].items()}
 
             json.dump(meta_data, f, ensure_ascii=False, indent=4)
 
@@ -671,8 +715,9 @@ class MetaTask:
         for md_k in meta_data.keys():
             setattr(self, md_k, meta_data[md_k])
 
-        # Post process special cases
+        # Post process special cases (setting arrays to arrays)
         self.folds = np.array(self.folds)
+        self.validation_indices = {int(k): np.array(v) for k, v in self.validation_indices.items()}
         self.is_classification = "classification" == meta_data["task_type"]
         self.is_regression = "regression" == meta_data["task_type"]
         self.missing_metadata_in_file = [x for x in self.meta_data_keys if x not in meta_data.keys()]
@@ -1036,8 +1081,7 @@ class MetaTask:
                                   use_validation_data_to_train_ensemble_techniques: bool = False,
                                   meta_train_test_split_fraction: float = 0.5, meta_train_test_split_random_state=0,
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
-                                  label_encoder=False, fit_technique_on_original_data=False,
-                                  preprocessor=None, output_file_path=None, oracle=False,
+                                  label_encoder=False, preprocessor=None, output_file_path=None, oracle=False,
                                   probability_calibration="no", return_scores: Optional[Callable] = None):
         """Run an ensemble technique on all folds and return the results
 
@@ -1068,9 +1112,6 @@ class MetaTask:
             Whether or not the base models need to be fitted to be passed to the ensemble technique.
         base_models_with_names: bool, default=False
             Whether or not the base models' list should contain the model and its name.
-        fit_technique_on_original_data: bool, default=False
-            If this is true, the .fit() method of the ensemble is called with X_train and y_train instead
-            of X_meta_train and y_meta_train.
         label_encoder: bool, default=False
             Whether the ensemble technique expects that a label encoder is applied to the fake models. Often required
             for sklearn ensemble techniques.
@@ -1105,6 +1146,11 @@ class MetaTask:
         if use_validation_data_to_train_ensemble_techniques and (not self.use_validation_data):
             raise ValueError("Metatask has no validation data but use_validation_to_train_ensemble_techniques is True.")
 
+        # -- Re-names
+        val_data = use_validation_data_to_train_ensemble_techniques
+        m_frac = meta_train_test_split_fraction
+        m_rand = meta_train_test_split_random_state
+
         # -- Iterate over Folds
         fold_scores = []
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
@@ -1114,89 +1160,59 @@ class MetaTask:
                                                                                                          fold_idx=idx)
             X_test, y_test, test_base_predictions, test_base_confidences, _, _ = self.split_meta_dataset(test_metadata,
                                                                                                          fold_idx=idx)
-            del train_metadata, test_metadata
 
-            # -- Employ Preprocessing
-            if preprocessor is not None:
-                X_train = preprocessor.fit_transform(X_train)
-                X_test = preprocessor.transform(X_test)
+            # -- Employ Preprocessing and input validation
+            train_indices = X_train.index.to_numpy()
+            X_train, X_test, y_train, y_test = self._check_fold_data_for_ensemble(X_train, X_test, y_train, y_test,
+                                                                                  preprocessor)
+            # -- Get Data for Fake Base Model and Evaluation
+            # - Data on which the base models have been trained and had to predict for the fold
+            test_base_model_train_X = X_train
+            test_base_model_train_y = y_train
 
-            # -- Get Data to train and evaluate ensemble technique
-            if use_validation_data_to_train_ensemble_techniques:
-                # For use validation data, we have to simply select the data as it is given
-                #   TODO: add support for hold-out validation here (e.g. take only fold k=1 everytime)
-
-                # Fake Model must be able to predict for all instances due to inner cross fold and outer predictions
-                # Hence, we also need to "train" it on all data. But this is irrelevant and technically not used by
-                #   the fake base model. Only kept for shape correctness checks.
-                base_model_train_X = base_model_test_X = np.vstack((X_train, X_test))
-
-                # Same for y (only needed for shape validation)
-                base_model_train_y = np.hstack((y_train.to_numpy(), y_test.to_numpy()))
-
-                # Also need to combine predictions / confidences (keep as DF for columns)
-                # Have to rename columns to use DFs with validation data, here remove fold postfix to achieve this
-                p_rename = {self.to_validation_predictor_name(col_name, idx): col_name for col_name
-                            in list(test_base_predictions)}
-                c_rename = {self.to_validation_predictor_name(col_name, idx): col_name for col_name
-                            in list(test_base_confidences)}
-                base_model_known_predictions = pd.concat([val_base_predictions.rename(columns=p_rename),
-                                                          test_base_predictions], axis=0)
-                base_model_known_confidences = pd.concat([val_base_confidences.rename(columns=c_rename),
-                                                          test_base_confidences], axis=0)
-
-                # Final set which subsets are used for what
-                # (These correspond to the subsets passed to the base model to get known predictions/confidences)
-                ensemble_train_X = X_train
-                ensemble_train_y = y_train
-                ensemble_test_X = X_test
-                ensemble_test_y = y_test
-
+            # - Validation Data
+            if not val_data:
+                ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+                fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+                val_base_model_train_y = self._get_data_for_ensemble_without_validation(X_train, X_test, y_train,
+                                                                                        y_test,
+                                                                                        test_base_predictions,
+                                                                                        test_base_confidences,
+                                                                                        m_frac, m_rand)
             else:
-                # Split for ensemble technique evaluation only on fold predictions
+                # Get iloc indices of validation data (Default value is for backwards compatibility)
+                fold_validation_indices = self.validation_indices.get(idx, train_indices)
+                # iloc_indices corresponds to np.arange(len(X_test)) for cross-validation
+                iloc_indices = np.intersect1d(fold_validation_indices, train_indices, return_indices=True)[2]
 
-                # -- Data on which the original model has been trained on to generate the predictions
-                base_model_train_X = X_train
-                base_model_train_y = y_train
+                # Get Data
+                ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+                fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+                val_base_model_train_y = self._get_data_for_ensemble_with_validation(X_train[iloc_indices], X_test,
+                                                                                     y_train[iloc_indices], y_test, idx,
+                                                                                     val_base_predictions.iloc[
+                                                                                         iloc_indices],
+                                                                                     val_base_confidences.iloc[
+                                                                                         iloc_indices],
+                                                                                     test_base_predictions,
+                                                                                     test_base_confidences)
 
-                # -- Data on which the original model had to predict
-                base_model_test_X = X_test
+            # -- Build Fake Base Models
+            base_models = self._build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
+                                                       val_base_model_train_X, val_base_model_train_y,
+                                                       ensemble_train_X, ensemble_train_y,
+                                                       fake_base_model_known_X,
+                                                       fake_base_model_known_predictions,
+                                                       fake_base_model_known_confidences,
+                                                       pre_fit_base_models, base_models_with_names,
+                                                       label_encoder, probability_calibration)
 
-                # -- Data on the predictions of the original base model
-                base_model_known_predictions = test_base_predictions
-                base_model_known_confidences = test_base_confidences
+            # -- Run Ensemble for Fold
+            y_pred_ensemble_model = self._run_ensemble_on_data(base_models, technique, technique_args,
+                                                               ensemble_train_X, ensemble_test_X, ensemble_train_y,
+                                                               ensemble_test_y, oracle)
 
-                # Split of the original test data corresponding to the parts of the predictions used for train and test
-                ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y \
-                    = train_test_split(X_test, y_test, test_size=meta_train_test_split_fraction,
-                                       random_state=meta_train_test_split_random_state, stratify=y_test)
-
-            # -- Build ensemble technique
-            base_models = initialize_fake_models(base_model_train_X, base_model_train_y, base_model_test_X,
-                                                 base_model_known_predictions, base_model_known_confidences,
-                                                 pre_fit_base_models, base_models_with_names, label_encoder,
-                                                 self.to_confidence_name)
-
-            # # -- Probability Calibration
-            base_models = probability_calibration_for_faked_models(base_models, ensemble_train_X, ensemble_train_y,
-                                                                   probability_calibration, pre_fit_base_models)
-
-            ensemble_model = technique(base_models, **technique_args)
-
-            # -- Fit and Predict
-            if fit_technique_on_original_data:  # not supported/used currently
-                raise NotImplementedError("Not fully tested yet, unknown how this should be used.")
-                # original data = data on which the base models have been fitted
-                # might not work as intended with fake models
-                ensemble_model.fit(base_model_train_X, base_model_train_y)
-            else:
-                ensemble_model.fit(ensemble_train_X, ensemble_train_y)
-
-            if oracle:
-                y_pred_ensemble_model = ensemble_model.oracle_predict(ensemble_test_X, ensemble_test_y)
-            else:
-                y_pred_ensemble_model = ensemble_model.predict(ensemble_test_X)
-
+            # -- Post Process Results
             self._save_fold_results(ensemble_test_y, y_pred_ensemble_model, idx, output_file_path, technique_name)
 
             # -- Save scores for return
@@ -1206,6 +1222,160 @@ class MetaTask:
         # -- Return Score
         if return_scores is not None:
             return fold_scores
+
+    def _build_fake_base_models(self, test_base_model_train_X, test_base_model_train_y,
+                                val_base_model_train_X, val_base_model_train_y,
+                                ensemble_train_X, ensemble_train_y, fake_base_model_known_X,
+                                fake_base_model_known_predictions, fake_base_model_known_confidences,
+                                pre_fit_base_models, base_models_with_names, label_encoder, probability_calibration):
+        """Build fake base models from data.
+
+        New Parameters (rest can be found in signature of run_ensemble_on_all_folds)
+        ----------
+        test_base_model_train_X: array-like
+            The instances on which the base models are trained for the (outer) evaluation
+        test_base_model_train_y: array-like
+            The labels on which the base models are trained for the (outer) evaluation
+        val_base_model_train_X:
+            The instances on which the base models are trained for the validation data.
+        val_base_model_train_y: array-like
+            The labels on which the base models are trained for the validation data.
+        ensemble_train_X: array-like
+            The instances on which the ensemble technique is to be trained.
+        ensemble_train_y: array-like
+            The labels on which the ensemble technique is to be trained.
+        fake_base_model_known_X: array-like
+            The instances from the test or training data for which the base model must know predictions.
+        fake_base_model_known_predictions: pd.DataFrame
+            Predictions for the instances of fake_base_model_known_X
+        fake_base_model_known_confidences: pd.DataFrame
+            Confidences for the instances of fake_base_model_known_X
+        """
+
+        # -- Build ensemble technique
+        base_models = _initialize_fake_models(test_base_model_train_X, test_base_model_train_y,
+                                              val_base_model_train_X, val_base_model_train_y, fake_base_model_known_X,
+                                              fake_base_model_known_predictions, fake_base_model_known_confidences,
+                                              pre_fit_base_models, base_models_with_names, label_encoder,
+                                              self.to_confidence_name)
+
+        # -- Probability Calibration
+        base_models = probability_calibration_for_faked_models(base_models, ensemble_train_X, ensemble_train_y,
+                                                               probability_calibration, pre_fit_base_models)
+
+        return base_models
+
+    @staticmethod
+    def _run_ensemble_on_data(base_models, technique, technique_args, ensemble_train_X, ensemble_test_X,
+                              ensemble_train_y, ensemble_test_y, oracle):
+        """Run an ensemble technique for the given data and return its predictions
+
+        New Parameters (rest can be found in signature of run_ensemble_on_all_folds or _build_fake_base_models)
+        ----------
+        base_models: List of fake base models
+            A list of base models that shall be used by the ensemble technique.
+        ensemble_test_X: array-like
+            The instances on which the ensemble technique shall predict on.
+        ensemble_test_y: array-like
+            The labels which the ensemble technique shall predict (only used for oracle-like techniques).
+        """
+
+        # -- Build ensemble model
+        ensemble_model = technique(base_models, **technique_args)
+
+        # -- Fit and Predict
+        ensemble_model.fit(ensemble_train_X, ensemble_train_y)
+
+        if oracle:
+            # Special case for virtual oracle-like predictors
+            y_pred_ensemble_model = ensemble_model.oracle_predict(ensemble_test_X, ensemble_test_y)
+        else:
+            y_pred_ensemble_model = ensemble_model.predict(ensemble_test_X)
+
+        return y_pred_ensemble_model
+
+    @staticmethod
+    def _check_fold_data_for_ensemble(X_train, X_test, y_train, y_test, preprocessor):
+        if preprocessor is not None:
+            X_train = preprocessor.fit_transform(X_train)
+            X_test = preprocessor.transform(X_test)
+        else:
+            # make sure X_train and X_test are arrays from here onwards
+            X_train = X_train.to_numpy()
+            X_test = X_test.to_numpy()
+
+        # Make sure y_train and y_test are arrays
+        y_train = y_train.to_numpy()
+        y_test = y_test.to_numpy()
+
+        return X_train, X_test, y_train, y_test
+
+    # -- Data for Ensemble Getters
+    @staticmethod
+    def _get_data_for_ensemble_without_validation(X_train, X_test, y_train, y_test, test_base_predictions,
+                                                  test_base_confidences, meta_train_test_split_fraction,
+                                                  meta_train_test_split_random_state):
+        """Split for ensemble technique evaluation only on fold predictions to get trainings data for the ensemble
+        """
+
+        # -- In this case, the base models have been fitted on the same data for the validation and test data
+        #   (because we take a subset of the test data as validation data)
+        val_base_model_train_X = X_train
+        val_base_model_train_y = y_train
+
+        # -- Data on the predictions of the original base model
+        fake_base_model_known_X = X_test
+        fake_base_model_known_predictions = test_base_predictions
+        fake_base_model_known_confidences = test_base_confidences
+
+        # Split of the original test data corresponding to the parts of the predictions used for train and test
+        ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y \
+            = train_test_split(X_test, y_test, test_size=meta_train_test_split_fraction,
+                               random_state=meta_train_test_split_random_state, stratify=y_test)
+
+        return ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+               fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+               val_base_model_train_y
+
+    def _get_data_for_ensemble_with_validation(self, X_train, X_test, y_train, y_test, fold_idx,
+                                               val_base_predictions, val_base_confidences,
+                                               test_base_predictions, test_base_confidences):
+        """Build data for validation based evaluation
+
+        Fake Model must be able to predict for all instances of the validation data and the fold's predictions.
+        Hence, it must get all the data needed for that.
+        """
+
+        # -- Select the relevant subset of training instances that are part of the validation data
+        val_base_model_train_X = X_train
+        val_base_model_train_y = y_train
+
+        # -- Get known/oracle data for fake base model
+        # Therefore, combine validation and test instances
+        fake_base_model_known_X = np.vstack((val_base_model_train_X, X_test))
+
+        # Also need to combine predictions / confidences (keep as DF for columns)
+        # Have to rename columns to use DFs with validation data, here remove fold postfix to achieve this
+        p_rename = {self.to_validation_predictor_name(col_name, fold_idx): col_name for col_name
+                    in list(test_base_predictions)}
+        c_rename = {self.to_validation_predictor_name(col_name, fold_idx): col_name for col_name
+                    in list(test_base_confidences)}
+        fake_base_model_known_predictions = pd.concat([val_base_predictions.rename(columns=p_rename),
+                                                       test_base_predictions], axis=0)
+        fake_base_model_known_confidences = pd.concat([val_base_confidences.rename(columns=c_rename),
+                                                       test_base_confidences], axis=0)
+
+        # Finally set which subsets are used for what
+        # (These correspond to the subsets passed to the base model to get known predictions/confidences)
+        ensemble_train_X = val_base_model_train_X
+        ensemble_train_y = val_base_model_train_y
+        ensemble_test_X = X_test
+        ensemble_test_y = y_test
+
+        # Return
+        return ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+               fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+               val_base_model_train_y
 
     # ---- Experimental Functions
     def _exp_yield_evaluation_data_across_folds(self, meta_train_test_split_fraction,
@@ -1226,9 +1396,9 @@ class MetaTask:
                                                                                     random_state=meta_train_test_split_random_state,
                                                                                     stratify=y_test)
 
-            base_models = initialize_fake_models(X_train, y_train, X_test, test_base_predictions,
-                                                 test_base_confidences, pre_fit_base_models, base_models_with_names,
-                                                 label_encoder, self.to_confidence_name)
+            base_models = _initialize_fake_models(X_train, y_train, X_train, y_train, X_test, test_base_predictions,
+                                                  test_base_confidences, pre_fit_base_models, base_models_with_names,
+                                                  label_encoder, self.to_confidence_name)
 
             if include_test_data:
                 assert_meta_train_pred, assert_meta_test_pred, assert_meta_train_conf, \
@@ -1241,9 +1411,23 @@ class MetaTask:
             else:
                 yield base_models, X_meta_train, X_meta_test, y_meta_train, y_meta_test
 
-    def _exp_yield_data_for_base_model_across_folds(self):
+    def _exp_yield_data_for_base_model_across_folds(self, folds_to_run: Optional[List[int]] = None):
+        """ Get Folds Data to Train Base Models
+
+        Parameters
+        ----------
+        folds_to_run: List of int, default=None
+            If None, nothing changes.
+            If not None, the function will only return the fold data for the fold indices
+            specified in the list.
+        """
+
         # Only used for tests currently
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
+            # -- Check if Fold is wanted, if not skip
+            if (folds_to_run is not None) and (idx not in folds_to_run):
+                continue
+
             # -- Get Data from Metatask
             X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata)
             X_test, y_test, _, _, _, _ = self.split_meta_dataset(test_metadata)

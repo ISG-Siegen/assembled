@@ -73,7 +73,7 @@ def build_multiple_test_classification_metatasks():
 
 
 # -- Utils
-def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed):
+def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed, cross_val=True):
     test_confidences = []
     test_predictions = []
     original_indices = []
@@ -91,13 +91,23 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed):
         train_ind, test_ind = metatask.get_indices_for_fold(fold_idx, return_indices=True)
 
         # Get OOF Data (inner validation data)
-        oof_confidences = cross_val_predict(base_model, X_train, y_train,
-                                            cv=StratifiedKFold(n_splits=5, shuffle=True,
-                                                               random_state=inner_split_rng),
-                                            method="predict_proba")
-        oof_predictions = classes_.take(np.argmax(oof_confidences, axis=1), axis=0)
-        oof_indices = list(train_ind)
-        oof_data = [fold_idx, oof_predictions, oof_confidences, oof_indices]
+        if cross_val:
+            oof_confidences = cross_val_predict(base_model, X_train, y_train,
+                                                cv=StratifiedKFold(n_splits=5, shuffle=True,
+                                                                   random_state=inner_split_rng),
+                                                method="predict_proba")
+            oof_predictions = classes_.take(np.argmax(oof_confidences, axis=1), axis=0)
+            oof_indices = np.array(list(train_ind))
+            oof_data = (fold_idx, oof_predictions, oof_confidences, oof_indices)
+        else:
+            val_X_train, val_X_test, val_y_train, _, _, val_indices = train_test_split(X_train, y_train, train_ind,
+                                                                                       test_size=0.25, stratify=y_train,
+                                                                                       random_state=1)
+            oof_confidences = base_model.fit(val_X_train, val_y_train).predict_proba(val_X_test)
+            oof_predictions = classes_.take(np.argmax(oof_confidences, axis=1), axis=0)
+            oof_indices = np.array(list(val_indices))
+            oof_data = (fold_idx, oof_predictions, oof_confidences, oof_indices)
+
         all_oof_data.append(oof_data)
 
         # Get Test Data
@@ -198,7 +208,7 @@ def build_metatask_with_validation_data_with_different_base_models_per_fold():
     return mt, perf_per_fold, perf_per_fold_full
 
 
-def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=None):
+def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=None, expected_ind=None, cross_val=True):
     # Control Randomness
     random_base_seed_data = 0
     base_rnger = np.random.RandomState(random_base_seed_data)
@@ -219,7 +229,8 @@ def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=N
         dummy_fold_indicator = np.array([0 for _ in range(len(dataset_frame))])
         mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
                                     feature_names=feature_names, cat_feature_names=cat_feature_names,
-                                    task_type="classification", openml_task_id=-1,  # if not an OpenML task, use -X for now
+                                    task_type="classification", openml_task_id=-1,
+                                    # if not an OpenML task, use -X for now
                                     dataset_name="breast_cancer", folds_indicator=dummy_fold_indicator
                                     )
     else:
@@ -247,11 +258,14 @@ def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=N
     ]
 
     expected_perf = np.empty(10)
-    expected_ind = np.array([0, 3, 3, 3, 2, 3, 2, 2, 3, 2])
+    expected_ind = np.array([0, 3, 3, 3, 2, 3, 2, 2, 3, 2]) if expected_ind is None else np.array(expected_ind)
+    print()
     for idx, (bm_name, bm) in enumerate(base_models):
         bm_predictions, bm_confidences, bm_validation_data, bm_classes, fold_perfs = get_bm_data(mt, bm, preproc,
-                                                                                                 random_int_seed_inner_folds)
+                                                                                                 random_int_seed_inner_folds,
+                                                                                                 cross_val=cross_val)
         expected_perf[expected_ind == idx] = np.array(fold_perfs)[expected_ind == idx]
+        print(fold_perfs)
 
         # Sort data
         mt.add_predictor(bm_name, bm_predictions, confidences=bm_confidences, conf_class_labels=list(bm_classes),
