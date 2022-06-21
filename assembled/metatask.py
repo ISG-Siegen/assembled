@@ -964,6 +964,8 @@ class MetaTask:
         pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Splits the meta dataset into its subcomponents
 
+        Return a copy.
+
         Parameters
         ----------
         meta_dataset: self.meta_dataset
@@ -1009,9 +1011,10 @@ class MetaTask:
 
             confidences_columns = self.get_conf_cols(predictions_columns)
 
-        return meta_dataset[self.feature_names], meta_dataset[self.target_name], meta_dataset[predictions_columns], \
-               meta_dataset[confidences_columns], meta_dataset[validation_predictions_columns], \
-               meta_dataset[validation_confidences_columns]
+        return meta_dataset.loc[:, self.feature_names].copy(), meta_dataset.loc[:, self.target_name].copy(), \
+               meta_dataset.loc[:, predictions_columns].copy(), meta_dataset.loc[:, confidences_columns].copy(), \
+               meta_dataset.loc[:, validation_predictions_columns].copy(), \
+               meta_dataset.loc[:, validation_confidences_columns].copy()
 
     @staticmethod
     def _save_fold_results(y_true, y_pred, fold_idx, out_path, technique_name, classification=True):
