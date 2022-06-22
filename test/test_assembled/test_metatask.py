@@ -3,6 +3,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.datasets import load_breast_cancer
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import balanced_accuracy_score
+from pathlib import Path
 
 import numpy as np
 from test.assembled_metatask_util import build_multiple_test_classification_metatasks, \
@@ -13,6 +14,7 @@ metatasks = build_multiple_test_classification_metatasks()
 
 
 class TestMetaTask:
+    base_path = Path(__file__).parent.resolve()
 
     def test_metatask_init_data_and_predictor_and_remove_predictor(self):
         # Load a Dataset as Dataframe
@@ -189,3 +191,24 @@ class TestMetaTask:
 
         assert len(mt.predictors) == 2
         assert mt.predictors == ['RF_6', 'RF_7']
+
+    def test_memory_usage(self):
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(sparse=False, fake_id=-11)
+        assert (mt.meta_dataset.memory_usage().sum() / 1e3) == 333.321
+
+        sparse_mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(sparse=True,
+                                                                                                  fake_id=-10)
+
+        assert (sparse_mt.meta_dataset.memory_usage().sum() / 1e3) == 287.801
+
+        # Test write / load
+        mt.to_files(self.base_path / "example_metatasks")
+        sparse_mt.to_files(self.base_path / "example_metatasks")
+
+        mt = MetaTask()
+        mt.read_metatask_from_files(self.base_path / "example_metatasks", -11)
+        sprase_mt = MetaTask(use_sparse_dtype=True)
+        sprase_mt.read_metatask_from_files(self.base_path / "example_metatasks", -10)
+
+        assert (mt.meta_dataset.memory_usage().sum() / 1e3) == 333.321
+        assert (sprase_mt.meta_dataset.memory_usage().sum() / 1e3) == 287.801

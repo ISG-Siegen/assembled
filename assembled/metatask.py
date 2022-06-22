@@ -17,9 +17,17 @@ class MetaTask:
 
     In the current version, we manage Metatasks as a meta_dataset (represented by a DataFrame) that contains all
     instance related data and meta_data (represented by a dict/json) that contains side information.
+
+
+    Parameters
+    ----------
+    use_sparse_dtype: bool, default=True
+        If True, we use pandas' sparse dtype to store data that is specific to a fold. This can drastically reduce
+        the memory usage.
+        Currently, due to a bug of pandas, only for confidence columns. FIXME fix this (make all labels numbers?)
     """
 
-    def __init__(self):
+    def __init__(self, use_sparse_dtype: bool = True):
         # -- for dataset init
         self.dataset = None
         self.dataset_name = None
@@ -32,6 +40,7 @@ class MetaTask:
         self.is_regression = None
         self.openml_task_id = None
         self.folds = None  # An array where each value represents the fold of an instance (starts from 0)
+        self.use_sparse_dtype = use_sparse_dtype
 
         # -- For Base Models
         self.predictions_and_confidences = pd.DataFrame()
@@ -159,7 +168,7 @@ class MetaTask:
                 "predictor_descriptions", "bad_predictors", "fold_predictors", "confidence_prefix", "feature_names",
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
                 "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
-                "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices"]
+                "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices", "use_sparse_dtype"]
 
     # -- Properties related to meta_dataset
     @property
@@ -592,6 +601,12 @@ class MetaTask:
             pred_data[predictor_name] = pred_data[predictor_name].astype('category').cat.set_categories(
                 class_labels_to_use)
 
+        if fold_data and self.use_sparse_dtype:
+            # Set sparse dtype for confidence columns (not for pred columns due to a iloc bug)
+            sparse_dtypes = [pd.SparseDtype(dense_dtype, np.nan) for dense_dtype in pred_data[conf_col_names].dtypes]
+            dtype_per_col = {col_name: dtype for col_name, dtype in zip(conf_col_names, sparse_dtypes)}
+            pred_data = pred_data.astype(dtype_per_col)
+
         # -- Concat and Verify integrity of index
         tmp_data = pd.concat([current_prediction_data, pred_data], axis=1).reset_index()
         if sum(tmp_data.index != tmp_data["index"]) != 0:
@@ -727,28 +742,44 @@ class MetaTask:
         del meta_data
 
         # -- Read Dataset
-        # Read cat columns correctly
-        cat_columns = self.cat_feature_names[:]
-        cat_labels = []
+        dtypes_to_read = {col_name: 'category' for col_name in self.cat_feature_names}
 
         # Add labels and predictors to cat columns for classification
         if self.is_classification:
-            cat_labels.extend(self.predictors)  # predictions should be cat
-            cat_labels.append(self.target_name)  # target is cat
-            cat_labels.extend(self.validation_predictions_columns)  # val predictions
-            cat_columns.extend(cat_labels)
-
-        to_read_as_cat = {col_name: 'category' for col_name in cat_columns}
-        meta_dataset = pd.read_csv(file_path_csv, dtype=to_read_as_cat)
-
-        # Post process categories (will be skipped if not classification)
-        if cat_labels:
             if any(not isinstance(x, str) for x in self.class_labels):
                 raise ValueError("Something went wrong, class labels should be strings but are integers!")
-            meta_dataset[cat_labels] = meta_dataset[cat_labels].apply(lambda x: x.cat.set_categories(self.class_labels),
-                                                                      axis=0)
+            # predictions should be cat + target is cat + val predictions
+            cat_labels = self.predictors + [self.target_name] + self.validation_predictions_columns
+            class_labels_as_cat = {col_name: pd.CategoricalDtype(self.class_labels) for col_name in
+                                   cat_labels}
+            dtypes_to_read = {**dtypes_to_read, **class_labels_as_cat}
 
-        # -- Init Datasets
+        # Init Dataset and Handle sparse dtypes
+        if self.use_sparse_dtype:
+            sparse_col = self.get_conf_cols(self.fold_predictors) + self.validation_confidences_columns
+            # read_as_sparse = {k: pd.SparseDtype("float64", np.nan) for k in sparse_col}
+            # Required if pred cols are sparse again
+            # {k: pd.SparseDtype(dense_dtype, np.nan) for k, dense_dtype in dtypes_to_read.items()
+            #                   if k in cols_for_sparse_dtype}
+
+            all_columns = self.feature_names + [self.target_name] + self.pred_and_conf_cols \
+                          + self.validation_predictions_columns + self.validation_confidences_columns
+
+            # Read the non sparse part
+            dense_col = [c for c in all_columns if c not in sparse_col]
+            meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read, usecols=dense_col)
+
+            # Go in chunks over the columns
+            n = 10
+            for i in range(0, len(sparse_col), n):
+                to_load_cols = sparse_col[i:i + n]
+                tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)
+                dtype_per_col = {c: pd.SparseDtype("float64", np.nan) for c in to_load_cols}
+                meta_dataset[to_load_cols] = tmp_md.astype(dtype_per_col)
+
+        else:
+            meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
+
         self.dataset = meta_dataset[self.feature_names + [self.target_name]]
         self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
 
@@ -951,27 +982,33 @@ class MetaTask:
         return train_indices, test_indices
 
     def fold_split(self, return_fold_index=False):
-        # Return split copy of metadataset
+        # Return a fold's split copy of metadataset
+        yield_copy = self.meta_dataset.copy()
+
         for i in range(self.max_fold + 1):
             train_indices, test_indices = self.get_indices_for_fold(i)
 
             if return_fold_index:
-                yield i, self.meta_dataset.iloc[train_indices].copy(), self.meta_dataset.iloc[test_indices].copy()
+                yield i, yield_copy.iloc[train_indices], yield_copy.iloc[test_indices]
             else:
-                yield self.meta_dataset.iloc[train_indices].copy(), self.meta_dataset.iloc[test_indices].copy()
+                yield yield_copy.iloc[train_indices], yield_copy.iloc[test_indices]
 
-    def split_meta_dataset(self, meta_dataset, fold_idx: Optional[int] = None) -> Tuple[
-        pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def split_meta_dataset(self, meta_dataset, fold_idx: Optional[int] = None, return_copy: bool = False,
+                           ignore_prediction_data: bool = False) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame,
+                                                                          pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Splits the meta dataset into its subcomponents
-
-        Return a copy.
 
         Parameters
         ----------
-        meta_dataset: self.meta_dataset
+        meta_dataset: meta_dataset
         fold_idx: int, default=None
             If int, the int is used to filter fold related data such that only the data for the fold with fold_idx
             remains in the returned data.
+        return_copy: bool, default=False
+            If True, copy before splitting and return the splits of the copy.
+        ignore_prediction_data: bool, default=False
+            If True, ignore prediction data during split. Can be used if the metatask object (self) changes while the
+            the meta_dataset that is split does not change.
 
         Returns
         -------
@@ -989,7 +1026,13 @@ class MetaTask:
             The confidences of the base models on the validation of a fold
         """
 
-        if fold_idx is None:
+        if return_copy:
+            meta_dataset = meta_dataset.copy()
+
+        if ignore_prediction_data:
+            predictions_columns = confidences_columns = []
+            validation_predictions_columns = validation_confidences_columns = []
+        elif fold_idx is None:
             predictions_columns = self.predictors
             confidences_columns = self.confidences
 
@@ -1011,10 +1054,10 @@ class MetaTask:
 
             confidences_columns = self.get_conf_cols(predictions_columns)
 
-        return meta_dataset.loc[:, self.feature_names].copy(), meta_dataset.loc[:, self.target_name].copy(), \
-               meta_dataset.loc[:, predictions_columns].copy(), meta_dataset.loc[:, confidences_columns].copy(), \
-               meta_dataset.loc[:, validation_predictions_columns].copy(), \
-               meta_dataset.loc[:, validation_confidences_columns].copy()
+        return meta_dataset.loc[:, self.feature_names], meta_dataset.loc[:, self.target_name], \
+               meta_dataset.loc[:, predictions_columns], meta_dataset.loc[:, confidences_columns], \
+               meta_dataset.loc[:, validation_predictions_columns], \
+               meta_dataset.loc[:, validation_confidences_columns]
 
     @staticmethod
     def _save_fold_results(y_true, y_pred, fold_idx, out_path, technique_name, classification=True):
@@ -1435,7 +1478,7 @@ class MetaTask:
                 continue
 
             # -- Get Data from Metatask
-            X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata)
-            X_test, y_test, _, _, _, _ = self.split_meta_dataset(test_metadata)
+            X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata, ignore_prediction_data=True)
+            X_test, y_test, _, _, _, _ = self.split_meta_dataset(test_metadata, ignore_prediction_data=True)
 
             yield idx, X_train, X_test, y_train, y_test

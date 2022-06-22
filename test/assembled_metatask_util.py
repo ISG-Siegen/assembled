@@ -130,7 +130,7 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed, cr
     return test_predictions, test_confidences, all_oof_data, classes_, fold_perfs
 
 
-def build_metatask_with_validation_data_with_different_base_models_per_fold():
+def build_metatask_with_validation_data_with_different_base_models_per_fold(sparse=False, fake_id=None):
     # Build Metatask and fill dataset
     task_data = load_breast_cancer(as_frame=True)
     target_name = task_data.target.name
@@ -139,11 +139,12 @@ def build_metatask_with_validation_data_with_different_base_models_per_fold():
     feature_names = task_data.feature_names
     cat_feature_names = []
     dataset_frame[target_name] = class_labels[dataset_frame[target_name].to_numpy()]
-    mt = MetaTask()
+    mt = MetaTask(use_sparse_dtype=sparse)
+    task_id = -1 if fake_id is None else fake_id
     dummy_fold_indicator = np.array([0 for _ in range(len(dataset_frame))])
     mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
                                 feature_names=feature_names, cat_feature_names=cat_feature_names,
-                                task_type="classification", openml_task_id=-1,  # if not an OpenML task, use -X for now
+                                task_type="classification", openml_task_id=task_id,  # if not an OpenML task, use -X for now
                                 dataset_name="breast_cancer", folds_indicator=dummy_fold_indicator)
     new_fold_indicator = np.zeros(mt.n_instances)
     cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
@@ -185,7 +186,7 @@ def build_metatask_with_validation_data_with_different_base_models_per_fold():
                                                                random_state=1),
                                             method="predict_proba")
         oof_predictions = classes_.take(np.argmax(oof_confidences, axis=1), axis=0)
-        oof_indices = list(train_ind)
+        oof_indices = train_ind
         oof_data = (fold_idx, oof_predictions, oof_confidences, oof_indices)
 
         # Get test data

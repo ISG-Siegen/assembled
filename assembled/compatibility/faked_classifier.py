@@ -253,7 +253,9 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
         # --- Check Confidences
         if not (isinstance(confidences, str) and confidences == "no_validation"):
-            confidences = check_array(confidences)
+            if isinstance(confidences, pd.DataFrame):
+                confidences = confidences.to_numpy()  # remove sparse data using to_numpy
+            confidences = check_array(confidences, accept_sparse=False)
 
             # Check equality of simulation data
             if confidences.shape[0] != X.shape[0]:
