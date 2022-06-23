@@ -182,6 +182,12 @@ class MetaTask:
                          axis=1)
 
     @property
+    def all_columns(self):
+        """all column names in a specific order"""
+        return self.feature_names + [self.target_name] + self.pred_and_conf_cols \
+               + self.validation_predictions_columns + self.validation_confidences_columns
+
+    @property
     def ground_truth(self) -> pd.Series:
         return self.dataset[self.target_name]
 
@@ -192,6 +198,35 @@ class MetaTask:
     @property
     def non_cat_feature_names(self):
         return [f for f in self.feature_names if f not in self.cat_feature_names]
+
+    @property
+    def sparse_columns(self):
+        if self.use_sparse_dtype:
+            return self.get_conf_cols(self.fold_predictors) + self.validation_confidences_columns
+
+        return []
+
+    @property
+    def yield_sparse_columns_chunks(self):
+        n = 10
+        sparse_cols = self.sparse_columns
+        for i in range(0, len(sparse_cols), n):
+            yield sparse_cols[i:i + n]
+
+    @staticmethod
+    def get_save_dtypes_for_columns(to_save_cols):
+        return {c: "float64" for c in to_save_cols}
+
+    @staticmethod
+    def get_load_dtypes_for_columns(to_load_cols):
+        # Required if pred cols are sparse again
+        # {k: pd.SparseDtype(dense_dtype, np.nan) for k, dense_dtype in dtypes_to_read.items()
+        #                   if k in cols_for_sparse_dtype}
+        return {c: pd.SparseDtype("float64", np.nan) for c in to_load_cols}
+
+    @property
+    def dense_columns(self):
+        return [c for c in self.all_columns if c not in self.sparse_columns]
 
     # -- Column Names Management for the different parts of the meta-dataset
     @property
@@ -689,8 +724,17 @@ class MetaTask:
         # -- Store the predictions together with the dataset in one file
         if self.use_hdf_file_format:
             file_path_hdf = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
-            self.meta_dataset.to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
-                                     format="table")
+            self.meta_dataset[self.dense_columns].to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
+                                                         format="table")
+
+            # Go in chunks over the columns
+            for to_save_cols in self.yield_sparse_columns_chunks:
+                # Get part of dataset to save and change its type
+                dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
+                self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()).astype(
+                    dtypes_dict).to_hdf(file_path_hdf, str(self.openml_task_id) + str(to_save_cols), mode="r+",
+                                        format="table", append=True)
+
         else:
             file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
             self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
@@ -768,33 +812,27 @@ class MetaTask:
 
             # Init Dataset and Handle sparse dtypes
             if self.use_sparse_dtype:
-                sparse_col = self.get_conf_cols(self.fold_predictors) + self.validation_confidences_columns
-                # read_as_sparse = {k: pd.SparseDtype("float64", np.nan) for k in sparse_col}
-                # Required if pred cols are sparse again
-                # {k: pd.SparseDtype(dense_dtype, np.nan) for k, dense_dtype in dtypes_to_read.items()
-                #                   if k in cols_for_sparse_dtype}
-
-                all_columns = self.feature_names + [self.target_name] + self.pred_and_conf_cols \
-                              + self.validation_predictions_columns + self.validation_confidences_columns
-
                 # Read the non sparse part
-                dense_col = [c for c in all_columns if c not in sparse_col]
-                meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read, usecols=dense_col)
+                meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read, usecols=self.dense_columns)
 
                 # Go in chunks over the columns
-                n = 10
-                for i in range(0, len(sparse_col), n):
-                    to_load_cols = sparse_col[i:i + n]
+                for to_load_cols in self.yield_sparse_columns_chunks:
                     tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)
-                    dtype_per_col = {c: pd.SparseDtype("float64", np.nan) for c in to_load_cols}
+                    dtype_per_col = self.get_load_dtypes_for_columns(to_load_cols)
                     meta_dataset[to_load_cols] = tmp_md.astype(dtype_per_col)
 
             else:
                 meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
-
         else:
             file_path_hdf = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
             meta_dataset = pd.read_hdf(file_path_hdf, key=str(openml_task_id))
+
+            # Go in chunks over the columns
+            for to_load_cols in self.yield_sparse_columns_chunks:
+                # Get part of dataset to save and change its type
+                dtypes_dict = self.get_load_dtypes_for_columns(to_load_cols)
+                meta_dataset[to_load_cols] = pd.read_hdf(file_path_hdf, key=str(openml_task_id)
+                                                                            + str(to_load_cols)).astype(dtypes_dict)
 
         self.dataset = meta_dataset[self.feature_names + [self.target_name]]
         self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]

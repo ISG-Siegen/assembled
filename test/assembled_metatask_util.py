@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 
 from assembled.metatask import MetaTask
@@ -144,7 +146,8 @@ def build_metatask_with_validation_data_with_different_base_models_per_fold(spar
     dummy_fold_indicator = np.array([0 for _ in range(len(dataset_frame))])
     mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
                                 feature_names=feature_names, cat_feature_names=cat_feature_names,
-                                task_type="classification", openml_task_id=task_id,  # if not an OpenML task, use -X for now
+                                task_type="classification", openml_task_id=task_id,
+                                # if not an OpenML task, use -X for now
                                 dataset_name="breast_cancer", folds_indicator=dummy_fold_indicator)
     new_fold_indicator = np.zeros(mt.n_instances)
     cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
@@ -273,3 +276,12 @@ def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=N
                          predictor_description=str(bm), validation_data=bm_validation_data)
 
     return mt, expected_perf
+
+
+def delete_metatask_files(base_path, task_id, hdf=False):
+    if hdf:
+        os.remove(os.path.join(base_path, "metatask_{}.hdf".format(task_id)))
+    else:
+        os.remove(os.path.join(base_path, "metatask_{}.csv".format(task_id)))
+
+    os.remove(os.path.join(base_path, "metatask_{}.json".format(task_id)))
