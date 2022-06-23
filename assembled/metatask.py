@@ -25,9 +25,14 @@ class MetaTask:
         If True, we use pandas' sparse dtype to store data that is specific to a fold. This can drastically reduce
         the memory usage.
         Currently, due to a bug of pandas, only for confidence columns. FIXME fix this (make all labels numbers?)
+    use_hdf_file_format: bool, default=False
+        If True, we use the hdf file format to save and load the meta-dataset.
     """
 
-    def __init__(self, use_sparse_dtype: bool = True):
+    def __init__(self, use_sparse_dtype: bool = True, use_hdf_file_format: bool = False):
+        self.use_sparse_dtype = use_sparse_dtype
+        self.use_hdf_file_format = use_hdf_file_format
+
         # -- for dataset init
         self.dataset = None
         self.dataset_name = None
@@ -40,7 +45,6 @@ class MetaTask:
         self.is_regression = None
         self.openml_task_id = None
         self.folds = None  # An array where each value represents the fold of an instance (starts from 0)
-        self.use_sparse_dtype = use_sparse_dtype
 
         # -- For Base Models
         self.predictions_and_confidences = pd.DataFrame()
@@ -168,7 +172,8 @@ class MetaTask:
                 "predictor_descriptions", "bad_predictors", "fold_predictors", "confidence_prefix", "feature_names",
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
                 "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
-                "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices", "use_sparse_dtype"]
+                "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices", "use_sparse_dtype",
+                "use_hdf_file_format"]
 
     # -- Properties related to meta_dataset
     @property
@@ -672,7 +677,7 @@ class MetaTask:
 
     # - Metatask to files
     def to_files(self, output_dir: str = ""):
-        """Store the metatask in two files. One .csv and .json file
+        """Store the metatask in two files. One .csv (or .hdf) and .json file
 
         The .csv file stores the complete meta-dataset. The .json stores additional and required metadata
 
@@ -682,8 +687,13 @@ class MetaTask:
             Directory in which the .json and .csv files for the metatask shall be stored.
         """
         # -- Store the predictions together with the dataset in one file
-        file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
-        self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
+        if self.use_hdf_file_format:
+            file_path_hdf = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
+            self.meta_dataset.to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
+                                     format="table")
+        else:
+            file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
+            self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
 
         # -- Store Meta data in its onw file
         file_path_json = os.path.join(output_dir, "metatask_{}.json".format(self.openml_task_id))
@@ -722,7 +732,6 @@ class MetaTask:
             Needed to determine which sanity checks to run.
         """
         # -- Read data
-        file_path_csv = os.path.join(input_dir, "metatask_{}.csv".format(openml_task_id))
         file_path_json = os.path.join(input_dir, "metatask_{}.json".format(openml_task_id))
 
         # - Read meta data
@@ -742,43 +751,50 @@ class MetaTask:
         del meta_data
 
         # -- Read Dataset
-        dtypes_to_read = {col_name: 'category' for col_name in self.cat_feature_names}
+        if not self.use_hdf_file_format:
+            file_path_csv = os.path.join(input_dir, "metatask_{}.csv".format(openml_task_id))
 
-        # Add labels and predictors to cat columns for classification
-        if self.is_classification:
-            if any(not isinstance(x, str) for x in self.class_labels):
-                raise ValueError("Something went wrong, class labels should be strings but are integers!")
-            # predictions should be cat + target is cat + val predictions
-            cat_labels = self.predictors + [self.target_name] + self.validation_predictions_columns
-            class_labels_as_cat = {col_name: pd.CategoricalDtype(self.class_labels) for col_name in
-                                   cat_labels}
-            dtypes_to_read = {**dtypes_to_read, **class_labels_as_cat}
+            dtypes_to_read = {col_name: 'category' for col_name in self.cat_feature_names}
 
-        # Init Dataset and Handle sparse dtypes
-        if self.use_sparse_dtype:
-            sparse_col = self.get_conf_cols(self.fold_predictors) + self.validation_confidences_columns
-            # read_as_sparse = {k: pd.SparseDtype("float64", np.nan) for k in sparse_col}
-            # Required if pred cols are sparse again
-            # {k: pd.SparseDtype(dense_dtype, np.nan) for k, dense_dtype in dtypes_to_read.items()
-            #                   if k in cols_for_sparse_dtype}
+            # Add labels and predictors to cat columns for classification
+            if self.is_classification:
+                if any(not isinstance(x, str) for x in self.class_labels):
+                    raise ValueError("Something went wrong, class labels should be strings but are integers!")
+                # predictions should be cat + target is cat + val predictions
+                cat_labels = self.predictors + [self.target_name] + self.validation_predictions_columns
+                class_labels_as_cat = {col_name: pd.CategoricalDtype(self.class_labels) for col_name in
+                                       cat_labels}
+                dtypes_to_read = {**dtypes_to_read, **class_labels_as_cat}
 
-            all_columns = self.feature_names + [self.target_name] + self.pred_and_conf_cols \
-                          + self.validation_predictions_columns + self.validation_confidences_columns
+            # Init Dataset and Handle sparse dtypes
+            if self.use_sparse_dtype:
+                sparse_col = self.get_conf_cols(self.fold_predictors) + self.validation_confidences_columns
+                # read_as_sparse = {k: pd.SparseDtype("float64", np.nan) for k in sparse_col}
+                # Required if pred cols are sparse again
+                # {k: pd.SparseDtype(dense_dtype, np.nan) for k, dense_dtype in dtypes_to_read.items()
+                #                   if k in cols_for_sparse_dtype}
 
-            # Read the non sparse part
-            dense_col = [c for c in all_columns if c not in sparse_col]
-            meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read, usecols=dense_col)
+                all_columns = self.feature_names + [self.target_name] + self.pred_and_conf_cols \
+                              + self.validation_predictions_columns + self.validation_confidences_columns
 
-            # Go in chunks over the columns
-            n = 10
-            for i in range(0, len(sparse_col), n):
-                to_load_cols = sparse_col[i:i + n]
-                tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)
-                dtype_per_col = {c: pd.SparseDtype("float64", np.nan) for c in to_load_cols}
-                meta_dataset[to_load_cols] = tmp_md.astype(dtype_per_col)
+                # Read the non sparse part
+                dense_col = [c for c in all_columns if c not in sparse_col]
+                meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read, usecols=dense_col)
+
+                # Go in chunks over the columns
+                n = 10
+                for i in range(0, len(sparse_col), n):
+                    to_load_cols = sparse_col[i:i + n]
+                    tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)
+                    dtype_per_col = {c: pd.SparseDtype("float64", np.nan) for c in to_load_cols}
+                    meta_dataset[to_load_cols] = tmp_md.astype(dtype_per_col)
+
+            else:
+                meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
 
         else:
-            meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
+            file_path_hdf = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
+            meta_dataset = pd.read_hdf(file_path_hdf, key=str(openml_task_id))
 
         self.dataset = meta_dataset[self.feature_names + [self.target_name]]
         self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]

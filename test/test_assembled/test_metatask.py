@@ -212,3 +212,21 @@ class TestMetaTask:
 
         assert (mt.meta_dataset.memory_usage().sum() / 1e3) == 333.321
         assert (sprase_mt.meta_dataset.memory_usage().sum() / 1e3) == 287.801
+
+    def test_default_file_format(self):
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12)
+        mt.to_files(self.base_path / "example_metatasks")
+
+        r_mt = MetaTask()
+        r_mt.read_metatask_from_files(self.base_path / "example_metatasks", -12)
+
+        assert r_mt == mt
+
+    def test_hdf_file_format(self):
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, hdf=True)
+        mt.to_files(self.base_path / "example_metatasks")
+
+        r_mt = MetaTask()
+        r_mt.read_metatask_from_files(self.base_path / "example_metatasks", -12)
+
+        assert r_mt == mt

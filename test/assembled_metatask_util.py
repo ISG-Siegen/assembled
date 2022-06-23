@@ -130,7 +130,7 @@ def get_bm_data(metatask, base_model, preprocessing, inner_split_random_seed, cr
     return test_predictions, test_confidences, all_oof_data, classes_, fold_perfs
 
 
-def build_metatask_with_validation_data_with_different_base_models_per_fold(sparse=False, fake_id=None):
+def build_metatask_with_validation_data_with_different_base_models_per_fold(sparse=False, fake_id=None, hdf=False):
     # Build Metatask and fill dataset
     task_data = load_breast_cancer(as_frame=True)
     target_name = task_data.target.name
@@ -139,7 +139,7 @@ def build_metatask_with_validation_data_with_different_base_models_per_fold(spar
     feature_names = task_data.feature_names
     cat_feature_names = []
     dataset_frame[target_name] = class_labels[dataset_frame[target_name].to_numpy()]
-    mt = MetaTask(use_sparse_dtype=sparse)
+    mt = MetaTask(use_sparse_dtype=sparse, use_hdf_file_format=hdf)
     task_id = -1 if fake_id is None else fake_id
     dummy_fold_indicator = np.array([0 for _ in range(len(dataset_frame))])
     mt.init_dataset_information(dataset_frame, target_name=target_name, class_labels=class_labels,
