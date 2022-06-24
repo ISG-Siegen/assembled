@@ -4,8 +4,11 @@ import os
 import json
 
 from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, _initialize_fake_models
+from assembled.utils.logger import get_logger
 from typing import List, Tuple, Optional, Callable, Union
 from sklearn.model_selection import train_test_split
+
+logger = get_logger(__file__)
 
 
 class MetaTask:
@@ -96,7 +99,8 @@ class MetaTask:
                     #   strange categorical values that do not exist in the dataset
                     #       (like a category that never appears in the column or an order)
 
-                except AssertionError:
+                except AssertionError as e:
+                    logger.info(e)
                     return False
             elif isinstance(self_vals[attr], np.ndarray):
                 if not np.array_equal(self_vals[attr], other_vals[attr]):
@@ -208,7 +212,7 @@ class MetaTask:
 
     @property
     def yield_sparse_columns_chunks(self):
-        n = 10
+        n = 100
         sparse_cols = self.sparse_columns
         for i in range(0, len(sparse_cols), n):
             yield sparse_cols[i:i + n]
@@ -723,12 +727,14 @@ class MetaTask:
         """
         # -- Store the predictions together with the dataset in one file
         if self.use_hdf_file_format:
+            logger.info("Start Saving to HDF File...")
             file_path_hdf = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
             self.meta_dataset[self.dense_columns].to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
                                                          format="table")
 
             # Go in chunks over the columns
-            for to_save_cols in self.yield_sparse_columns_chunks:
+            for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
+                logger.info("Saving Column Chunks {}".format(chunk_idx))
                 # Get part of dataset to save and change its type
                 dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
                 self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()).astype(
@@ -736,12 +742,13 @@ class MetaTask:
                                         format="table", append=True)
 
         else:
+            logger.info("Start Saving to CSV File...")
             file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
             self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
 
         # -- Store Meta data in its onw file
+        logger.info("Start Saving to JSON File...")
         file_path_json = os.path.join(output_dir, "metatask_{}.json".format(self.openml_task_id))
-
         with open(file_path_json, 'w', encoding='utf-8') as f:
             meta_data = self.meta_data
 
@@ -750,6 +757,8 @@ class MetaTask:
             meta_data["validation_indices"] = {k: v.tolist() for k, v in meta_data["validation_indices"].items()}
 
             json.dump(meta_data, f, ensure_ascii=False, indent=4)
+
+        logger.info("Finished Saving Metatask to Files.")
 
     def to_sharable_prediction_data(self, output_dir: str = ""):
         """Store Metatasks without dataset (e.g., all data but self.dataset's rows)"""
@@ -817,7 +826,7 @@ class MetaTask:
 
                 # Go in chunks over the columns
                 for to_load_cols in self.yield_sparse_columns_chunks:
-                    tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)
+                    tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)[to_load_cols]
                     dtype_per_col = self.get_load_dtypes_for_columns(to_load_cols)
                     meta_dataset[to_load_cols] = tmp_md.astype(dtype_per_col)
 
