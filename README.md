@@ -132,7 +132,7 @@ see `example_evaluation_and_analysis.py` to run our pre-defined evaluation code.
 
 ## A Comment on Validation Data
 
-By default and by design, Metatask created only from OpenML data do not have inner fold validation data. To train an
+By default, and by design, Metatask created only from OpenML data do not have inner fold validation data. To train an
 ensemble techniques on metataks created only from OpenML data, we split a fold's predictions on the fold's test data of
 into ensemble_train and ensemble_test data. With ensemble_train being used to build/train the ensemble and ensemble_test
 being used to evaluate the ensemble.

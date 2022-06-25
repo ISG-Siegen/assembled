@@ -29,7 +29,8 @@ dependencies = [
 "Bug Tracker" = "https://github.com/ISG-Siegen/assembled/issues"
 
 [tool.setuptools]
-packages = ["assembled", "assembledopenml"]
+packages = ["assembled", "assembled.compatibility", "assembled.utils",
+ "assembledopenml", "assembledopenml.util"]
 
 [project.optional-dependencies]
 test = [
