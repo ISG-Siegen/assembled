@@ -8,7 +8,7 @@ from sklearn.utils.validation import check_is_fitted, NotFittedError
 
 from results.data_utils import get_default_preprocessing
 from assembled.compatibility.faked_classifier import FakedClassifier
-from test.assembled_metatask_util import build_multiple_test_classification_metatasks
+from tests.assembled_metatask_util import build_multiple_test_classification_metatasks
 
 metatasks = build_multiple_test_classification_metatasks()
 

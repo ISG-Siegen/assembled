@@ -34,6 +34,11 @@ Which hooks to use is still in debate. Not sure about mypy default etc.
     * Including n-repeated in a metatask could be achieved by adding appropriate prefixes to the base models and making
       the fold_indicator a 2D array.
 
+## Build and Deployment
+
+* While in the project root call: `python3 -m build`
+* Afterwards, upload it to pypi via: `python3 -m twine upload dist/*`
+
 # Documentation TODOs for the Future
 
 * Setup Docstring Documentation / Webpage

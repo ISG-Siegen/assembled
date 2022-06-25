@@ -7,7 +7,7 @@ from ensemble_techniques.util.metrics import OpenMLAUROC
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 
 from results.data_utils import get_default_preprocessing
-from test.assembled_metatask_util import build_metatask_with_validation_data_with_different_base_models_per_fold, \
+from tests.assembled_metatask_util import build_metatask_with_validation_data_with_different_base_models_per_fold, \
     build_metatask_with_validation_data_same_base_models_all_folds
 
 

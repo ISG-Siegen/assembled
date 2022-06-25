@@ -6,7 +6,7 @@ from sklearn.metrics import balanced_accuracy_score
 from pathlib import Path
 
 import numpy as np
-from test.assembled_metatask_util import build_multiple_test_classification_metatasks, \
+from tests.assembled_metatask_util import build_multiple_test_classification_metatasks, \
     build_metatask_with_validation_data_with_different_base_models_per_fold, \
     build_metatask_with_validation_data_same_base_models_all_folds, \
     delete_metatask_files

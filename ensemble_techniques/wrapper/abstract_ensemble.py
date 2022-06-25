@@ -2,7 +2,7 @@
 # https://github.com/automl/auto-sklearn/blob/master/autosklearn/ensembles/abstract_ensemble.py
 
 from abc import ABCMeta, abstractmethod
-from typing import List, Optional, overload
+from typing import List, Optional
 import numpy as np
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.preprocessing import LabelEncoder

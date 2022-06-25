@@ -7,7 +7,7 @@ from sklearn.datasets import load_breast_cancer, load_digits, load_iris, load_wi
 from assembled.metatask import MetaTask
 from assembled.benchmaker import BenchMaker, rebuild_benchmark
 from assembledopenml.openml_assembler import OpenMLAssembler, task_to_dataset
-from test.assembled_metatask_util import build_metatask_with_validation_data_same_base_models_all_folds
+from tests.assembled_metatask_util import build_metatask_with_validation_data_same_base_models_all_folds
 
 
 class TestBenchMaker:

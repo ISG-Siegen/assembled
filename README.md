@@ -43,9 +43,18 @@ evaluate ensemble techniques.
 
 ## Installation
 
-The code in this repository was tested and developed for Python Version 3.9 on Linux and Windows. If needed, install
-Python. Afterwards, please set up a python environment with our `requirements.txt` to install the requirements for all
-code stored in this repository.
+To install Assembled and Assembled-OpenML use:
+
+```bash
+pip install assembled[openml]
+```
+
+If you only want to use Assembled, leave away `[openml]`.
+
+### An Environment for all Code
+
+For experiments, work-in-progress code, or other non-packaged code stored in this repository, we provide `requirements.txt` files.
+These can be used to re-create the environments needed for the code.
 
 An example workflow for the installation on Linux is:
 
@@ -84,6 +93,7 @@ from results.data_utils import get_default_preprocessing
 
 # Import an adapted version of auto-sklearn's Ensemble Selection
 # (basically a wrapper since the original implementation only works with predictions and not base models)
+# (requires the ensemble_techniques directory to be in your local directory)
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from ensemble_techniques.util.metrics import OpenMLAUROC
 
