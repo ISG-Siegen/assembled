@@ -43,7 +43,7 @@ evaluate ensemble techniques.
 
 ## Installation
 
-To install Assembled and Assembled-OpenML use:
+To install Assembled and Assembled-OpenML, use:
 
 ```bash
 pip install assembled[openml]
@@ -51,10 +51,16 @@ pip install assembled[openml]
 
 If you only want to use Assembled, leave away `[openml]`.
 
-### An Environment for all Code
+To install the newest version (from the main branch), use:
 
-For experiments, work-in-progress code, or other non-packaged code stored in this repository, we provide `requirements.txt` files.
-These can be used to re-create the environments needed for the code.
+```bash
+pip install git+https://github.com/ISG-Siegen/assembled.git#egg=assembled[openml]
+```
+
+### Other Installations
+
+For experiments, work-in-progress code, or other non-packaged code stored in this repository, we
+provide `requirements.txt` files. These can be used to re-create the environments needed for the code.
 
 An example workflow for the installation on Linux is:
 
@@ -74,41 +80,42 @@ code that you want to use.
 
 To see the example usage of Assembled-OpenML, see the `./examples/` directory for code examples and more details.
 
-A simple example of using Assembled-OpenML is:
+A simple example of using Assembled-OpenML to get a Metatask and using Assembled to evaluate an ensemble technique on
+the Metatask is:
 
 ```python
 from assembledopenml.openml_assembler import OpenMLAssembler
 
+from sklearn.compose import ColumnTransformer
+from sklearn.compose import make_column_selector
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.impute import SimpleImputer
+
+# -- Use Assembled-OpenML to build a metatask for the OpenML task with ID 3
 omla = OpenMLAssembler(nr_base_models=50)
-meta_task = omla.run(openml_task_id=3)  # Build a metatask for the OpenML task with ID 3
-meta_task.to_files("results/metatasks")  # Store the meta-dataset
-```
+mt = omla.run(openml_task_id=3)
 
-A simple example of evaluating auto-sklearn's ensemble selection with a Metatask is:
+# -- Get a preprocessor
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", SimpleImputer(strategy="constant", fill_value=-1),
+         make_column_selector(dtype_exclude="category")),
+        ("cat", OneHotEncoder(handle_unknown="ignore", drop="first"),
+         make_column_selector(dtype_include="category")),
+    ],
+    sparse_threshold=0
+)
 
-```python
-from assembled.metatask import MetaTask
-from numpy.random import RandomState
-from results.data_utils import get_default_preprocessing
-
+# -- Get an ensemble technique
 # Import an adapted version of auto-sklearn's Ensemble Selection
-# (basically a wrapper since the original implementation only works with predictions and not base models)
 # (requires the ensemble_techniques directory to be in your local directory)
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from ensemble_techniques.util.metrics import OpenMLAUROC
 
-mt = MetaTask()
-# We assume here, that the metatask files for task ID 3 exist. Alternatively, call omla.run(openml_task_id=3) first.
-mt.read_metatask_from_files("results/metatasks", 3)
-
-# Define the ensemble technique (arguments)
-technique_run_args = {"ensemble_size": 50,
-                      "metric": OpenMLAUROC,  # Please be aware, AUROC is very inefficient
-                      "random_state": RandomState(0)
-                      }
-
+# -- Benchmark the ensemble technique on the metatask
+technique_run_args = {"ensemble_size": 50, "metric": OpenMLAUROC}
 fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
-                                           pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                           pre_fit_base_models=True, preprocessor=preprocessor,
                                            meta_train_test_split_fraction=0.5, meta_train_test_split_random_state=0,
                                            return_scores=OpenMLAUROC)
 print(fold_scores)
