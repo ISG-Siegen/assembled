@@ -1,6 +1,6 @@
 # Assembled
 
-Assembled is planed to be a framework for ensemble evaluation. It shall be able to run, benchmark, and evaluate ensemble
+Assembled is planed to be a framework for ensemble evaluation. It shall run, benchmark, and evaluate ensemble
 techniques without the overhead of training base models.
 
 Currently, its main features are:

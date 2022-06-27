@@ -1,8 +1,8 @@
 # Assembled's Supported Ensemble Techniques
 
 It is important to note, that we utilize ensemble techniques of existing libraries and new/custom techniques through
-simulating base models based on our data. To execute ensemble techniques on our benchmark, we have created so-called "
-FakedClassifiers". These represent base models (sklearn estimators) to a library like sklearn or DESlib and thus allows
+simulating base models based on our data. To execute ensemble techniques on our benchmark, we have created so-called
+"FakedClassifiers". These represent base models (sklearn estimators) to a library like sklearn or DESlib and thus allows
 us to use these natively. Employing these fake base models is the default case for our benchmark and all our code. We
 have also added a wrapper to use methods that only work with the predictions (like autosklearn's ensemble selection).
 
