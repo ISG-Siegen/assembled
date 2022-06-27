@@ -86,37 +86,21 @@ the Metatask is:
 ```python
 from assembledopenml.openml_assembler import OpenMLAssembler
 
-from sklearn.compose import ColumnTransformer
-from sklearn.compose import make_column_selector
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.impute import SimpleImputer
-
-# -- Use Assembled-OpenML to build a metatask for the OpenML task with ID 3
-omla = OpenMLAssembler(nr_base_models=50)
-mt = omla.run(openml_task_id=3)
-
-# -- Get a preprocessor
-preprocessor = ColumnTransformer(
-    transformers=[
-        ("num", SimpleImputer(strategy="constant", fill_value=-1),
-         make_column_selector(dtype_exclude="category")),
-        ("cat", OneHotEncoder(handle_unknown="ignore", drop="first"),
-         make_column_selector(dtype_include="category")),
-    ],
-    sparse_threshold=0
-)
-
-# -- Get an ensemble technique
 # Import an adapted version of auto-sklearn's Ensemble Selection
 # (requires the ensemble_techniques directory to be in your local directory)
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from ensemble_techniques.util.metrics import OpenMLAUROC
 
+# -- Use Assembled-OpenML to build a metatask for the OpenML task with ID 3
+omla = OpenMLAssembler(nr_base_models=50, openml_metric_name="area_under_roc_curve")
+mt = omla.run(openml_task_id=3)
+
 # -- Benchmark the ensemble technique on the metatask
 technique_run_args = {"ensemble_size": 50, "metric": OpenMLAUROC}
 fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
-                                           pre_fit_base_models=True, preprocessor=preprocessor,
-                                           meta_train_test_split_fraction=0.5, meta_train_test_split_random_state=0,
+                                           pre_fit_base_models=True,
+                                           meta_train_test_split_fraction=0.5,
+                                           meta_train_test_split_random_state=0,
                                            return_scores=OpenMLAUROC)
 print(fold_scores)
 print("Average Performance:", sum(fold_scores) / len(fold_scores))

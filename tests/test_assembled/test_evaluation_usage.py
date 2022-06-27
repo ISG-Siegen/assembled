@@ -31,6 +31,26 @@ def test_evaluation_with_validation_data():
     np.testing.assert_array_equal(fold_scores, expected_perf)
 
 
+def test_evaluation_without_preprocessor():
+    random_base_seed_models = 1
+    mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds()
+
+    # Example on how to evaluate base models with a metatask that includes validation data
+    technique_run_args = {"ensemble_size": 1,
+                          "metric": OpenMLAUROC,
+                          "random_state": np.random.RandomState(random_base_seed_models)
+                          }
+
+    fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
+                                               pre_fit_base_models=True, preprocessor=None,
+                                               use_validation_data_to_train_ensemble_techniques=True,
+                                               return_scores=OpenMLAUROC)
+
+    # With the setup as it is (ensemble_size=1), the evaluation will select one of the base models per fold and create
+    # the best selection.
+    np.testing.assert_array_equal(fold_scores, expected_perf)
+
+
 def test_evaluation_with_validation_data_with_different_base_models_per_fold():
     mt, perf_per_fold, perf_per_fold_full = build_metatask_with_validation_data_with_different_base_models_per_fold()
 
@@ -60,7 +80,8 @@ def test_evaluation_with_validation_data_with_different_base_models_per_fold():
 def test_evaluation_with_holdout_validation_data():
     random_base_seed_models = 1
     mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds(cross_val=False,
-                                                                                       expected_ind=[1, 2, 2, 3, 1, 3, 2, 1, 1, 3])
+                                                                                       expected_ind=[1, 2, 2, 3, 1, 3,
+                                                                                                     2, 1, 1, 3])
 
     # Example on how to evaluate base models with a metatask that includes validation data
     technique_run_args = {"ensemble_size": 1,

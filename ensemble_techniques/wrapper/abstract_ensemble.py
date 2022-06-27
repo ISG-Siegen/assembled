@@ -73,7 +73,7 @@ class AbstractEnsemble(object):
         if self.passthrough and (not (hasattr(self, "supports_passthrough") and self.supports_passthrough is True)):
             raise ValueError("Passthrough is enabled but the ensemble technique does not support passthrough!")
 
-        X, y = check_X_y(X, y)
+        X, y = check_X_y(X, y, dtype=None)
         self.le_ = LabelEncoder().fit(y)
         self.classes_ = self.le_.classes_
 
@@ -97,7 +97,7 @@ class AbstractEnsemble(object):
             Vector containing the class labels for each sample.
         """
         check_is_fitted(self, ["le_", "classes_"])
-        X = check_array(X)
+        X = check_array(X, dtype=None)
 
         if self.passthrough:
             ensemble_output = self.ensemble_passthrough_predict(X, self.base_models_predictions_for_ensemble_predict(X))
@@ -143,7 +143,7 @@ class AbstractEnsemble(object):
         y : ndarray, shape (n_samples,)
             Vector containing the class labels for each sample.
         """
-        X, y = check_X_y(X, y)
+        X, y = check_X_y(X, y, dtype=None)
         self.classes_ = np.unique(y)
 
         ensemble_output = self.ensemble_oracle_predict(self.base_models_predictions_for_ensemble_predict(X), y)
