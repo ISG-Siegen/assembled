@@ -1123,7 +1123,7 @@ class MetaTask:
                meta_dataset.loc[:, validation_confidences_columns]
 
     @staticmethod
-    def _save_fold_results(y_true, y_pred, fold_idx, out_path, technique_name, classification=True):
+    def _save_fold_results(y_true, y_pred, fold_idx, out_path, technique_name, index_metatask, classification=True):
         """Code to Save Fold results in a file such that we can add any other folds results in the future"""
         if out_path is None:
             return
@@ -1132,7 +1132,6 @@ class MetaTask:
         path_exists = os.path.exists(out_path)
 
         # Get data that is to be saved
-        index_metatask = y_true.index
         fold_indicator = [fold_idx for _ in range(len(y_true))]
         res_df = pd.DataFrame(np.array([y_true, index_metatask, fold_indicator, y_pred]).T,
                               columns=["ground_truth", "Index-Metatask", "Fold", technique_name])
@@ -1279,7 +1278,8 @@ class MetaTask:
                                                                                                          fold_idx=idx)
 
             # -- Employ Preprocessing and input validation
-            train_indices = X_train.index.to_numpy()
+            train_X_indices = X_train.index.to_numpy()
+            test_X_indices = X_test.index.tolist()
             X_train, X_test, y_train, y_test = self._check_fold_data_for_ensemble(X_train, X_test, y_train, y_test,
                                                                                   preprocessor)
             # -- Get Data for Fake Base Model and Evaluation
@@ -1294,16 +1294,17 @@ class MetaTask:
             if not val_data:
                 ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
                 fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
-                val_base_model_train_y = self._get_data_for_ensemble_without_validation(X_train, X_test, y_train,
-                                                                                        y_test,
-                                                                                        test_base_predictions,
-                                                                                        test_base_confidences,
-                                                                                        m_frac, m_rand)
+                val_base_model_train_y, _, test_indices = self._get_data_for_ensemble_without_validation(
+                    X_train, X_test, y_train,
+                    y_test,
+                    test_base_predictions,
+                    test_base_confidences,
+                    m_frac, m_rand, test_X_indices)
             else:
                 # Get iloc indices of validation data (Default value is for backwards compatibility)
-                fold_validation_indices = self.validation_indices.get(idx, train_indices)
+                fold_validation_indices = self.validation_indices.get(idx, train_X_indices)
                 # iloc_indices corresponds to np.arange(len(X_test)) for cross-validation
-                iloc_indices = np.intersect1d(fold_validation_indices, train_indices, return_indices=True)[2]
+                iloc_indices = np.intersect1d(fold_validation_indices, train_X_indices, return_indices=True)[2]
 
                 # Get Data
                 ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
@@ -1316,6 +1317,9 @@ class MetaTask:
                                                                                          iloc_indices],
                                                                                      test_base_predictions,
                                                                                      test_base_confidences)
+
+                # train_indices = train_X_indices
+                test_indices = test_X_indices
 
             # -- Build Fake Base Models
             if verbose:
@@ -1337,7 +1341,8 @@ class MetaTask:
                                                                ensemble_test_y, oracle)
 
             # -- Post Process Results
-            self._save_fold_results(ensemble_test_y, y_pred_ensemble_model, idx, output_file_path, technique_name)
+            self._save_fold_results(ensemble_test_y, y_pred_ensemble_model, idx, output_file_path, technique_name,
+                                    test_indices)
 
             # -- Save scores for return
             if return_scores is not None:
@@ -1441,7 +1446,7 @@ class MetaTask:
     @staticmethod
     def _get_data_for_ensemble_without_validation(X_train, X_test, y_train, y_test, test_base_predictions,
                                                   test_base_confidences, meta_train_test_split_fraction,
-                                                  meta_train_test_split_random_state):
+                                                  meta_train_test_split_random_state, test_X_indices):
         """Split for ensemble technique evaluation only on fold predictions to get trainings data for the ensemble
         """
 
@@ -1456,13 +1461,13 @@ class MetaTask:
         fake_base_model_known_confidences = test_base_confidences
 
         # Split of the original test data corresponding to the parts of the predictions used for train and test
-        ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y \
-            = train_test_split(X_test, y_test, test_size=meta_train_test_split_fraction,
+        ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, train_indices, test_indices \
+            = train_test_split(X_test, y_test, test_X_indices, test_size=meta_train_test_split_fraction,
                                random_state=meta_train_test_split_random_state, stratify=y_test)
 
         return ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
                fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
-               val_base_model_train_y
+               val_base_model_train_y, train_indices, test_indices
 
     def _get_data_for_ensemble_with_validation(self, X_train, X_test, y_train, y_test, fold_idx,
                                                val_base_predictions, val_base_confidences,
