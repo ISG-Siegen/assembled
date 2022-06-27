@@ -1194,7 +1194,8 @@ class MetaTask:
                                   meta_train_test_split_fraction: float = 0.5, meta_train_test_split_random_state=0,
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
                                   label_encoder=False, preprocessor=None, output_file_path=None, oracle=False,
-                                  probability_calibration="no", return_scores: Optional[Callable] = None):
+                                  probability_calibration="no", return_scores: Optional[Callable] = None,
+                                  verbose: bool = False):
         """Run an ensemble technique on all folds and return the results
 
         The current implementation builds fake base models by default such that we can evaluate methods this way.
@@ -1250,6 +1251,8 @@ class MetaTask:
             we "replace" the base models with calibrated base models.
         return_scores: Callable, default=None
             If the evaluation shall return the scores for each fold. If not None, a metric function is expected.
+        verbose: bool, default=False
+            If True, evaluation status information are logged.
         """
         # TODO -- Parameter Preprocessing / Checking
         #   Add safety check for file path here or something
@@ -1266,7 +1269,9 @@ class MetaTask:
         # -- Iterate over Folds
         fold_scores = []
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
-
+            if verbose:
+                logger.info("Start Evaluation for Fold {}/{}...".format(idx + 1, self.max_fold + 1))
+                logger.info("Get Fold Data")
             # -- Get Data from Metatask
             X_train, y_train, _, _, val_base_predictions, val_base_confidences = self.split_meta_dataset(train_metadata,
                                                                                                          fold_idx=idx)
@@ -1283,6 +1288,9 @@ class MetaTask:
             test_base_model_train_y = y_train
 
             # - Validation Data
+            if verbose:
+                logger.info("Get Validation Data")
+
             if not val_data:
                 ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
                 fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
@@ -1310,6 +1318,8 @@ class MetaTask:
                                                                                      test_base_confidences)
 
             # -- Build Fake Base Models
+            if verbose:
+                logger.info("Build Fake Base Models")
             base_models = self._build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
                                                        val_base_model_train_X, val_base_model_train_y,
                                                        ensemble_train_X, ensemble_train_y,
@@ -1320,6 +1330,8 @@ class MetaTask:
                                                        label_encoder, probability_calibration)
 
             # -- Run Ensemble for Fold
+            if verbose:
+                logger.info("Run Ensemble on Fold")
             y_pred_ensemble_model = self._run_ensemble_on_data(base_models, technique, technique_args,
                                                                ensemble_train_X, ensemble_test_X, ensemble_train_y,
                                                                ensemble_test_y, oracle)
@@ -1330,6 +1342,9 @@ class MetaTask:
             # -- Save scores for return
             if return_scores is not None:
                 fold_scores.append(return_scores(ensemble_test_y, y_pred_ensemble_model))
+
+            if verbose:
+                logger.info("Finished Evaluation.")
 
         # -- Return Score
         if return_scores is not None:
