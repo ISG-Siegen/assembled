@@ -35,6 +35,11 @@ def test_evaluation_without_preprocessor():
     random_base_seed_models = 1
     mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds()
 
+    # Make a value nan such that nan checks must be performed / ignored.
+    mt.dataset.iloc[3, 4] = np.nan
+    mt.dataset.iloc[3, 5] = np.nan
+    mt.dataset.iloc[:, 5] = mt.dataset.iloc[:, 5].astype("category")
+
     # Example on how to evaluate base models with a metatask that includes validation data
     technique_run_args = {"ensemble_size": 1,
                           "metric": OpenMLAUROC,

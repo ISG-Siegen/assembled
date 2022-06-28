@@ -110,7 +110,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
             Returns
         """
         # --- Input Validation
-        X, y = self._validate_data(X, y, dtype=None)
+        X, y = self._validate_data(X, y)
 
         # Store the classes seen during fit
         self.le_ = LabelEncoder().fit(y)
@@ -142,7 +142,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("Simulation of FakedClassifier is not fitted for predict.")
 
         # -- Input validation
-        X = self._validate_data(X, reset=False, dtype=None)
+        X = self._validate_data(X, reset=False)
         X = self._validate_simulation_data(X, reset=False)
 
         # -- Get Predictions from stored data
@@ -192,7 +192,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("Simulation of FakedClassifier is not fitted for predict_proba.")
 
         # -- Input validation
-        X = self._validate_data(X, reset=False, dtype=None)
+        X = self._validate_data(X, reset=False)
         X = self._validate_simulation_data(X, reset=False)
 
         # -- Get Predictions from stored data
@@ -233,7 +233,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
             validated.
         """
         # --- Check X
-        X = check_array(X, dtype=None)
+        X = check_array(X)
 
         # Check feature
         if reset:

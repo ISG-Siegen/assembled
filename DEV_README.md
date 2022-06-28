@@ -39,6 +39,16 @@ Which hooks to use is still in debate. Not sure about mypy default etc.
 * While in the project root call: `python3 -m build`
 * Afterwards, upload it to pypi via: `python3 -m twine upload dist/*`
 
+## Other
+
+### Dataset Checks for Fake Base Models
+Since many ensemble techniques would not need to touch the trainings features, we could
+avoid preprocessing the training features entirely for these cases. This, however, requires
+us to remove a lot of checks from our models and code (like no nans allowed, numeric only dtype,...).
+
+Since do not want to do this, it seems more logical to determine a default preprocessor.
+The default preprocessor transforms categories to integers and fills missing values.
+
 # Documentation TODOs for the Future
 
 * Setup Docstring Documentation / Webpage

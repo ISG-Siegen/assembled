@@ -1229,6 +1229,8 @@ class MetaTask:
             for sklearn ensemble techniques.
         preprocessor: sklearn-like transformer, default=None
             Function used to preprocess the data for later. called fit_transform on X_train and transform on X_test.
+            If None, the default preprocessor is ued. The default preprocessor encodes categories as ordinal numbers
+            and fills missing values.
         output_file_path: str, default=None
             File path where the results of the folds shall be stored. If none, we do not store anything.
             We assume the file is in the correct format if it exists and will create it if it does not exit.
@@ -1428,13 +1430,11 @@ class MetaTask:
 
     @staticmethod
     def _check_fold_data_for_ensemble(X_train, X_test, y_train, y_test, preprocessor):
-        if preprocessor is not None:
-            X_train = preprocessor.fit_transform(X_train)
-            X_test = preprocessor.transform(X_test)
-        else:
-            # make sure X_train and X_test are arrays from here onwards
-            X_train = X_train.to_numpy()
-            X_test = X_test.to_numpy()
+        if preprocessor is None:
+            preprocessor = _default_preprocessor()
+
+        X_train = preprocessor.fit_transform(X_train)
+        X_test = preprocessor.transform(X_test)
 
         # Make sure y_train and y_test are arrays
         y_train = y_train.to_numpy()
@@ -1565,3 +1565,25 @@ class MetaTask:
             X_test, y_test, _, _, _, _ = self.split_meta_dataset(test_metadata, ignore_prediction_data=True)
 
             yield idx, X_train, X_test, y_train, y_test
+
+
+def _default_preprocessor():
+    from sklearn.compose import ColumnTransformer
+    from sklearn.compose import make_column_selector
+    from sklearn.preprocessing import OrdinalEncoder
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import Pipeline
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", SimpleImputer(strategy="constant", fill_value=-1),
+             make_column_selector(dtype_exclude="category")),
+            ("cat", Pipeline(steps=[("encoder", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)),
+                                    ("imputer", SimpleImputer(strategy="constant", fill_value=-1))
+                                    ]),
+             make_column_selector(dtype_include="category")),
+        ],
+        sparse_threshold=0
+    )
+
+    return preprocessor
