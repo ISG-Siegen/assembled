@@ -4,7 +4,7 @@ from multiprocessing import Process, Queue
 
 
 def isolate_function(func, *i_args, **i_kwargs):
-    """The Processify Decorate adapted to be a callable wrapper
+    """The Processify Decorate adapted with minor changes to be a callable wrapper
 
     Taken from and all Credits to https://gist.github.com/schlamar/2311116
     """
@@ -12,9 +12,8 @@ def isolate_function(func, *i_args, **i_kwargs):
     def process_func(q, *args, **kwargs):
         try:
             ret = func(*args, **kwargs)
-        except Exception:
-            ex_type, ex_value, tb = sys.exc_info()
-            error = ex_type, ex_value, ''.join(traceback.format_tb(tb))
+        except Exception as e:
+            error = e
             ret = None
         else:
             error = None
@@ -33,8 +32,6 @@ def isolate_function(func, *i_args, **i_kwargs):
     p.join()
 
     if error:
-        ex_type, ex_value, tb_str = error
-        message = '%s (in subprocess)\n%s' % (ex_value.message, tb_str)
-        raise ex_type(message)
+        raise error
 
     return ret
