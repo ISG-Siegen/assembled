@@ -263,13 +263,11 @@ def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=N
 
     expected_perf = np.empty(10)
     expected_ind = np.array([0, 3, 3, 3, 2, 3, 2, 2, 3, 2]) if expected_ind is None else np.array(expected_ind)
-    print()
     for idx, (bm_name, bm) in enumerate(base_models):
         bm_predictions, bm_confidences, bm_validation_data, bm_classes, fold_perfs = get_bm_data(mt, bm, preproc,
                                                                                                  random_int_seed_inner_folds,
                                                                                                  cross_val=cross_val)
         expected_perf[expected_ind == idx] = np.array(fold_perfs)[expected_ind == idx]
-        print(fold_perfs)
 
         # Sort data
         mt.add_predictor(bm_name, bm_predictions, confidences=bm_confidences, conf_class_labels=list(bm_classes),

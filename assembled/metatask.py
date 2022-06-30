@@ -5,6 +5,9 @@ import json
 
 from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, _initialize_fake_models
 from assembled.utils.logger import get_logger
+from assembled.utils.isolation import isolate_function
+from assembled.utils.preprocessing import check_fold_data_for_ensemble
+
 from typing import List, Tuple, Optional, Callable, Union
 from sklearn.model_selection import train_test_split
 
@@ -1194,7 +1197,7 @@ class MetaTask:
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
                                   label_encoder=False, preprocessor=None, output_file_path=None, oracle=False,
                                   probability_calibration="no", return_scores: Optional[Callable] = None,
-                                  verbose: bool = False):
+                                  verbose: bool = False, isolate_ensemble_execution: bool = False):
         """Run an ensemble technique on all folds and return the results
 
         The current implementation builds fake base models by default such that we can evaluate methods this way.
@@ -1254,13 +1257,23 @@ class MetaTask:
             If the evaluation shall return the scores for each fold. If not None, a metric function is expected.
         verbose: bool, default=False
             If True, evaluation status information are logged.
+        isolate_ensemble_execution: bool, default=False
+            If True, we isolate the execution of the ensemble in its own subprocess. This avoids problems
+            with memory leakage or other problems from implementations of the ensemble.
+            !WARNING! Only works on Linux currently; FIXME: Either a bug or not possible on Windows, dont know.
         """
         # TODO -- Parameter Preprocessing / Checking
         #   Add safety check for file path here or something
         #   Check if probability_calibration has correct string names
         #   Check metric / scorer object
+
         if use_validation_data_to_train_ensemble_techniques and (not self.use_validation_data):
             raise ValueError("Metatask has no validation data but use_validation_to_train_ensemble_techniques is True.")
+
+        if isolate_ensemble_execution:
+            import platform
+            if platform.system() == "Windows":
+                raise ValueError("The option isolate_ensemble_execution can currently not be used on Windows!")
 
         # -- Re-names
         val_data = use_validation_data_to_train_ensemble_techniques
@@ -1282,8 +1295,9 @@ class MetaTask:
             # -- Employ Preprocessing and input validation
             train_X_indices = X_train.index.to_numpy()
             test_X_indices = X_test.index.tolist()
-            X_train, X_test, y_train, y_test = self._check_fold_data_for_ensemble(X_train, X_test, y_train, y_test,
-                                                                                  preprocessor)
+            X_train, X_test, y_train, y_test = check_fold_data_for_ensemble(X_train, X_test, y_train, y_test,
+                                                                            preprocessor)
+
             # -- Get Data for Fake Base Model and Evaluation
             # - Data on which the base models have been trained and had to predict for the fold
             test_base_model_train_X = X_train
@@ -1293,35 +1307,15 @@ class MetaTask:
             if verbose:
                 logger.info("Get Validation Data")
 
-            if not val_data:
-                ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
-                fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
-                val_base_model_train_y, _, test_indices = self._get_data_for_ensemble_without_validation(
-                    X_train, X_test, y_train,
-                    y_test,
-                    test_base_predictions,
-                    test_base_confidences,
-                    m_frac, m_rand, test_X_indices)
-            else:
-                # Get iloc indices of validation data (Default value is for backwards compatibility)
-                fold_validation_indices = self.validation_indices.get(idx, train_X_indices)
-                # iloc_indices corresponds to np.arange(len(X_test)) for cross-validation
-                iloc_indices = np.intersect1d(fold_validation_indices, train_X_indices, return_indices=True)[2]
-
-                # Get Data
-                ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
-                fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
-                val_base_model_train_y = self._get_data_for_ensemble_with_validation(X_train[iloc_indices], X_test,
-                                                                                     y_train[iloc_indices], y_test, idx,
-                                                                                     val_base_predictions.iloc[
-                                                                                         iloc_indices],
-                                                                                     val_base_confidences.iloc[
-                                                                                         iloc_indices],
-                                                                                     test_base_predictions,
-                                                                                     test_base_confidences)
-
-                # train_indices = train_X_indices
-                test_indices = test_X_indices
+            ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+            fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+            val_base_model_train_y, test_indices = self._get_data_for_ensemble(val_data, X_train, X_test, y_train,
+                                                                               y_test, val_base_predictions,
+                                                                               val_base_confidences,
+                                                                               test_base_predictions,
+                                                                               test_base_confidences,
+                                                                               m_frac, m_rand, train_X_indices,
+                                                                               test_X_indices, idx)
 
             # -- Build Fake Base Models
             if verbose:
@@ -1334,13 +1328,18 @@ class MetaTask:
                                                        fake_base_model_known_confidences,
                                                        pre_fit_base_models, base_models_with_names,
                                                        label_encoder, probability_calibration)
-
             # -- Run Ensemble for Fold
             if verbose:
                 logger.info("Run Ensemble on Fold")
-            y_pred_ensemble_model = self._run_ensemble_on_data(base_models, technique, technique_args,
-                                                               ensemble_train_X, ensemble_test_X, ensemble_train_y,
-                                                               ensemble_test_y, oracle)
+
+            func_args = (base_models, technique, technique_args, ensemble_train_X, ensemble_test_X, ensemble_train_y,
+                         ensemble_test_y, oracle)
+            func = self._run_ensemble_on_data
+
+            if isolate_ensemble_execution:
+                y_pred_ensemble_model = isolate_function(func, *func_args)
+            else:
+                y_pred_ensemble_model = func(*func_args)
 
             # -- Post Process Results
             self._save_fold_results(ensemble_test_y, y_pred_ensemble_model, idx, output_file_path, technique_name,
@@ -1428,21 +1427,47 @@ class MetaTask:
 
         return y_pred_ensemble_model
 
-    @staticmethod
-    def _check_fold_data_for_ensemble(X_train, X_test, y_train, y_test, preprocessor):
-        if preprocessor is None:
-            preprocessor = _default_preprocessor()
-
-        X_train = preprocessor.fit_transform(X_train)
-        X_test = preprocessor.transform(X_test)
-
-        # Make sure y_train and y_test are arrays
-        y_train = y_train.to_numpy()
-        y_test = y_test.to_numpy()
-
-        return X_train, X_test, y_train, y_test
-
     # -- Data for Ensemble Getters
+    def _get_data_for_ensemble(self, val_data, X_train, X_test, y_train, y_test, val_base_predictions,
+                               val_base_confidences, test_base_predictions, test_base_confidences,
+                               m_frac, m_rand, train_X_indices, test_X_indices, fold_idx):
+        """Wrapper function for validation data or not"""
+
+        if not val_data:
+            ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+            fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+            val_base_model_train_y, _, test_indices = self._get_data_for_ensemble_without_validation(
+                X_train, X_test, y_train,
+                y_test,
+                test_base_predictions,
+                test_base_confidences,
+                m_frac, m_rand, test_X_indices)
+        else:
+            # Get iloc indices of validation data (Default value is for backwards compatibility)
+            fold_validation_indices = self.validation_indices.get(fold_idx, train_X_indices)
+            # iloc_indices corresponds to np.arange(len(X_test)) for cross-validation
+            iloc_indices = np.intersect1d(fold_validation_indices, train_X_indices, return_indices=True)[2]
+
+            # Get Data
+            ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+            fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+            val_base_model_train_y = self._get_data_for_ensemble_with_validation(X_train[iloc_indices], X_test,
+                                                                                 y_train[iloc_indices], y_test,
+                                                                                 fold_idx,
+                                                                                 val_base_predictions.iloc[
+                                                                                     iloc_indices],
+                                                                                 val_base_confidences.iloc[
+                                                                                     iloc_indices],
+                                                                                 test_base_predictions,
+                                                                                 test_base_confidences)
+
+            # train_indices = train_X_indices
+            test_indices = test_X_indices
+
+        return ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+               fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+               val_base_model_train_y, test_indices
+
     @staticmethod
     def _get_data_for_ensemble_without_validation(X_train, X_test, y_train, y_test, test_base_predictions,
                                                   test_base_confidences, meta_train_test_split_fraction,
@@ -1565,25 +1590,3 @@ class MetaTask:
             X_test, y_test, _, _, _, _ = self.split_meta_dataset(test_metadata, ignore_prediction_data=True)
 
             yield idx, X_train, X_test, y_train, y_test
-
-
-def _default_preprocessor():
-    from sklearn.compose import ColumnTransformer
-    from sklearn.compose import make_column_selector
-    from sklearn.preprocessing import OrdinalEncoder
-    from sklearn.impute import SimpleImputer
-    from sklearn.pipeline import Pipeline
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", SimpleImputer(strategy="constant", fill_value=-1),
-             make_column_selector(dtype_exclude="category")),
-            ("cat", Pipeline(steps=[("encoder", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)),
-                                    ("imputer", SimpleImputer(strategy="constant", fill_value=-1))
-                                    ]),
-             make_column_selector(dtype_include="category")),
-        ],
-        sparse_threshold=0
-    )
-
-    return preprocessor
