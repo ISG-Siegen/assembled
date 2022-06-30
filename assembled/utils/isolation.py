@@ -13,6 +13,7 @@ def isolate_function(func, *i_args, **i_kwargs):
         try:
             ret = func(*args, **kwargs)
         except Exception as e:
+            traceback.print_exc()
             error = e
             ret = None
         else:
@@ -32,6 +33,6 @@ def isolate_function(func, *i_args, **i_kwargs):
     p.join()
 
     if error:
-        raise error
+        raise RuntimeError("Error in Isolate Subprocess, see previous traceback.")
 
     return ret
