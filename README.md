@@ -132,6 +132,18 @@ Alternatively, if a metatask and the base models stored in the metatask were ini
 we can also use the validation data to train the ensemble technique and then test it on all test data/predictions of a
 fold.
 
-## Citation
+## Relevant publications
+If you use Assembled or Assembled-OpenML in scientific publications, we would appreciate citations.
 
-The Paper related to Assembled-OpenML (the first version of this project) is not yet public.
+**Assembled-OpenML: Creating Efficient Benchmarks for Ensembles in AutoML with OpenML**, _Lennart Purucker and Joeran Beel,_
+_First Conference on Automated Machine Learning (Late-Breaking Workshop), 2022_
+
+[Link](https://automl.cc/wp-content/uploads/2022/07/assembled_openml_creating_effi.pdf) to publication.
+```
+@inproceedings{purucker2022assembledopenml,
+    title={Assembled-Open{ML}: Creating Efficient Benchmarks for Ensembles with Open{ML}},
+    author={Lennart Purucker and Joeran Beel},
+    booktitle={First Conference on Automated Machine Learning (Late-Breaking Workshop)},
+    year={2022}
+}
+```
