@@ -8,7 +8,7 @@ from assembled.metatask import MetaTask
 from assembled.utils.logger import get_logger
 from assembled.utils.isolation import isolate_function
 from assembled.utils.preprocessing import check_fold_data_for_ensemble
-from assembled.utils.data_mgmt import save_fold_results
+from assembled.utils.data_mgmt import save_fold_results_sequentially, save_fold_results
 from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, _initialize_fake_models
 
 logger = get_logger(__file__)
@@ -63,6 +63,8 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         and fills missing values.
     output_file_path: str, default=None
         File path where the results of the folds shall be stored. If none, we do not store anything.
+        If store_results="sequential", a path to a file (.csv) is needed.
+        If store_results="parallel", a path to a directory for the results specific to the current metatask is needed.
         We assume the file is in the correct format for store_results="sequential" if it exists and will create a new
         file if it does not exit.
         Here, no option to purge/delete existing files is given. This is must be done in an outer scope.
@@ -175,11 +177,13 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
             y_pred_ensemble_model = func(*func_args)
 
         # -- Post Process Results
-        if store_results == "sequential":
-            save_fold_results(ensemble_test_y, y_pred_ensemble_model, fold_idx, output_file_path, technique_name,
-                              test_indices)
-        else:
-            raise NotImplementedError
+        if output_file_path is not None:
+            if store_results == "sequential":
+                save_fold_results_sequentially(ensemble_test_y, y_pred_ensemble_model, fold_idx, output_file_path,
+                                               technique_name, test_indices)
+            else:
+                save_fold_results(ensemble_test_y, y_pred_ensemble_model, fold_idx, output_file_path,
+                                  technique_name, test_indices, metatask.openml_task_id)
 
         # -- Save scores for return
         if return_scores is not None:
