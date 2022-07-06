@@ -1,4 +1,5 @@
 from assembled.metatask import MetaTask
+from assembled.ensemble_evaluation import evaluate_ensemble_on_metatask
 from results.data_utils import get_valid_benchmark_ids
 from ensemble_techniques.collect_ensemble_techniques import get_benchmark_techniques
 from ensemble_techniques.util.metrics import OpenMLAUROC
@@ -39,11 +40,8 @@ if __name__ == "__main__":
             print("### Benchmark Ensemble Technique: {} ({}/{})###".format(technique_name, counter_techniques,
                                                                            nr_techniques))
             counter_techniques += 1
-            scores = mt.run_ensemble_on_all_folds(technique_name=technique_name, **technique_run_args,
-                                                  meta_train_test_split_fraction=0.5, output_file_path=out_path,
-                                                  meta_train_test_split_random_state=test_split_rng,
-                                                  return_scores=OpenMLAUROC)
+            scores = evaluate_ensemble_on_metatask(mt, technique_name=technique_name, **technique_run_args,
+                                                   meta_train_test_split_fraction=0.5, output_file_path=out_path,
+                                                   meta_train_test_split_random_state=test_split_rng,
+                                                   return_scores=OpenMLAUROC)
             print("K-Fold Average Performance:", sum(scores) / len(scores))
-
-    # ----------------- TODOs
-    # x) collect metadata about evaluation: time taken; parameters; passthrough;

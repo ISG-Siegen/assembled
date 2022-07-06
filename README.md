@@ -1,7 +1,7 @@
 # Assembled
 
-Assembled is planed to be a framework for ensemble evaluation. It shall run, benchmark, and evaluate ensemble
-techniques without the overhead of training base models.
+Assembled is planed to be a framework for ensemble evaluation. It shall run, benchmark, and evaluate ensemble techniques
+without the overhead of training base models.
 
 Currently, its main features are:
 
@@ -85,6 +85,7 @@ the Metatask is:
 
 ```python
 from assembledopenml.openml_assembler import OpenMLAssembler
+from assembled.ensemble_evaluation import evaluate_ensemble_on_metatask
 
 # Import an adapted version of auto-sklearn's Ensemble Selection
 # (requires the ensemble_techniques directory to be in your local directory)
@@ -97,11 +98,11 @@ mt = omla.run(openml_task_id=3)
 
 # -- Benchmark the ensemble technique on the metatask
 technique_run_args = {"ensemble_size": 50, "metric": OpenMLAUROC}
-fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
-                                           pre_fit_base_models=True,
-                                           meta_train_test_split_fraction=0.5,
-                                           meta_train_test_split_random_state=0,
-                                           return_scores=OpenMLAUROC)
+fold_scores = evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
+                                            pre_fit_base_models=True,
+                                            meta_train_test_split_fraction=0.5,
+                                            meta_train_test_split_random_state=0,
+                                            return_scores=OpenMLAUROC)
 print(fold_scores)
 print("Average Performance:", sum(fold_scores) / len(fold_scores))
 ```
@@ -133,12 +134,15 @@ we can also use the validation data to train the ensemble technique and then tes
 fold.
 
 ## Relevant publications
+
 If you use Assembled or Assembled-OpenML in scientific publications, we would appreciate citations.
 
-**Assembled-OpenML: Creating Efficient Benchmarks for Ensembles in AutoML with OpenML**, _Lennart Purucker and Joeran Beel,_
+**Assembled-OpenML: Creating Efficient Benchmarks for Ensembles in AutoML with OpenML**, _Lennart Purucker and Joeran
+Beel,_
 _First Conference on Automated Machine Learning (Late-Breaking Workshop), 2022_
 
 [Link](https://automl.cc/wp-content/uploads/2022/07/assembled_openml_creating_effi.pdf) to publication.
+
 ```
 @inproceedings{purucker2022assembledopenml,
     title={Assembled-Open{ML}: Creating Efficient Benchmarks for Ensembles with Open{ML}},

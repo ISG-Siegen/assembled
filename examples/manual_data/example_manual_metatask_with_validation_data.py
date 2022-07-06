@@ -7,6 +7,7 @@ from sklearn.model_selection import cross_val_predict, StratifiedKFold
 
 from assembled.metatask import MetaTask
 from assembledopenml.openml_assembler import init_dataset_from_task
+from assembled.ensemble_evaluation import evaluate_ensemble_on_metatask
 
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from ensemble_techniques.util.metrics import OpenMLAUROC
@@ -107,9 +108,10 @@ if __name__ == "__main__":
                           "random_state": np.random.RandomState(random_base_seed_models)
                           }
 
-    fold_scores = mt.run_ensemble_on_all_folds(EnsembleSelection, technique_run_args, "autosklearn.EnsembleSelection",
-                                               pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
-                                               use_validation_data_to_train_ensemble_techniques=True,
-                                               return_scores=OpenMLAUROC)
+    fold_scores = evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                                "autosklearn.EnsembleSelection",
+                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                                use_validation_data_to_train_ensemble_techniques=True,
+                                                return_scores=OpenMLAUROC)
     print(fold_scores)
     print("Average Performance Ensemble Selection:", sum(fold_scores) / len(fold_scores))
