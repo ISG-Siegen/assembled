@@ -3,7 +3,6 @@ import numpy as np
 import os
 import json
 
-from assembled.compatibility.faked_classifier import _initialize_fake_models
 from assembled.utils.logger import get_logger
 
 from typing import List, Tuple, Optional, Callable, Union
@@ -1176,6 +1175,8 @@ class MetaTask:
                                                 meta_train_test_split_random_state,
                                                 pre_fit_base_models, base_models_with_names, label_encoder,
                                                 preprocessor, include_test_data=False):
+        from assembled.compatibility.faked_classifier import _initialize_fake_models
+
         # FIXME, extend to validation data usage?
         for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
             X_train, y_train, _, _, _, _ = self.split_meta_dataset(train_metadata)
