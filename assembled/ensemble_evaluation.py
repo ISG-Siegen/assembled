@@ -179,6 +179,20 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         else:
             y_pred_ensemble_model, run_meta_data = func(*func_args)
 
+        # -- Add evaluation settings metadata
+        if save_evaluation_metadata:
+            run_meta_data["ensemble_model_arguments"] = str(technique_args)
+            run_meta_data["validation_data_used"] = use_validation_data_to_train_ensemble_techniques
+            run_meta_data["meta_train_test_split_fraction"] = meta_train_test_split_fraction
+            run_meta_data["meta_train_test_split_random_state"] = meta_train_test_split_random_state
+            run_meta_data["pre_fit_base_models"] = pre_fit_base_models
+            run_meta_data["base_models_with_names"] = base_models_with_names
+            run_meta_data["label_encoder"] = label_encoder
+            run_meta_data["preprocessor"] = "No Preprocessor" if preprocessor is None else str(preprocessor).replace(
+                " ", "").replace("\n", "")
+            run_meta_data["oracle"] = oracle
+            run_meta_data["probability_calibration"] = probability_calibration
+
         # -- Post Process Results
         save_results(output_dir_path, store_results, save_evaluation_metadata, ensemble_test_y, y_pred_ensemble_model,
                      fold_idx, technique_name, test_indices, metatask.openml_task_id, run_meta_data)
