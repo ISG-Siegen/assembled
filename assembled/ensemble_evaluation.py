@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -8,7 +9,7 @@ from assembled.metatask import MetaTask
 from assembled.utils.logger import get_logger
 from assembled.utils.isolation import isolate_function
 from assembled.utils.preprocessing import check_fold_data_for_ensemble
-from assembled.utils.data_mgmt import save_fold_results_sequentially, save_fold_results
+from assembled.utils.data_mgmt import save_results
 from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, _initialize_fake_models
 
 logger = get_logger(__file__)
@@ -19,9 +20,9 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
                                   use_validation_data_to_train_ensemble_techniques: bool = False,
                                   meta_train_test_split_fraction: float = 0.5, meta_train_test_split_random_state=0,
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
-                                  label_encoder=False, preprocessor=None, output_file_path=None,
-                                  store_results: str = "sequential", oracle=False,
-                                  probability_calibration="no", return_scores: Optional[Callable] = None,
+                                  label_encoder=False, preprocessor=None, output_dir_path=None,
+                                  store_results: str = "sequential", save_evaluation_metadata: bool = False,
+                                  oracle=False, probability_calibration="no", return_scores: Optional[Callable] = None,
                                   verbose: bool = False, isolate_ensemble_execution: bool = False):
     """Run an ensemble technique on all folds and return the results
 
@@ -61,17 +62,19 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         Function used to preprocess the data for later. called fit_transform on X_train and transform on X_test.
         If None, the default preprocessor is ued. The default preprocessor encodes categories as ordinal numbers
         and fills missing values.
-    output_file_path: str, default=None
-        File path where the results of the folds shall be stored. If none, we do not store anything.
-        If store_results="sequential", a path to a file (.csv) is needed.
-        If store_results="parallel", a path to a directory for the results specific to the current metatask is needed.
-        We assume the file is in the correct format for store_results="sequential" if it exists and will create a new
-        file if it does not exit.
+    output_dir_path: str, default=None
+        Path to directory where the results of the folds shall be stored. If none, we do not store anything.
+        We assume existing files are in the correct format for store_results="sequential" and will create
+        a new file if it does not exit.
         Here, no option to purge/delete existing files is given. This is must be done in an outer scope.
     store_results: {"sequential", "parallel"}, default="sequential"
         How to store the results of a fold's evaluation.
             - "sequential": Store the results of all evaluated methods in one unique file.
             - "parallel": Store each fold's results in different files such that they can later be merged easily.
+    save_evaluation_metadata: bool, default=False
+        If true, save evaluation metadata in a (separate) file. Otherwise, do not save run metadata.
+        Currently evaluation metadata include: {"fit_time", "predict_time"}
+        The metadata is stored for each fold.
     oracle: bool, default=False
         Whether the ensemble technique is an oracle. If true, we pass and call the method differently.
     probability_calibration: {"sigmoid", "isotonic", "auto", "no"}, default="no"
@@ -172,18 +175,13 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         func = _run_ensemble_on_data
 
         if isolate_ensemble_execution:
-            y_pred_ensemble_model = isolate_function(func, *func_args)
+            y_pred_ensemble_model, run_meta_data = isolate_function(func, *func_args)
         else:
-            y_pred_ensemble_model = func(*func_args)
+            y_pred_ensemble_model, run_meta_data = func(*func_args)
 
         # -- Post Process Results
-        if output_file_path is not None:
-            if store_results == "sequential":
-                save_fold_results_sequentially(ensemble_test_y, y_pred_ensemble_model, fold_idx, output_file_path,
-                                               technique_name, test_indices)
-            else:
-                save_fold_results(ensemble_test_y, y_pred_ensemble_model, fold_idx, output_file_path,
-                                  technique_name, test_indices, metatask.openml_task_id)
+        save_results(output_dir_path, store_results, save_evaluation_metadata, ensemble_test_y, y_pred_ensemble_model,
+                     fold_idx, technique_name, test_indices, metatask.openml_task_id, run_meta_data)
 
         # -- Save scores for return
         if return_scores is not None:
@@ -371,12 +369,18 @@ def _run_ensemble_on_data(base_models, technique, technique_args, ensemble_train
     ensemble_model = technique(base_models, **technique_args)
 
     # -- Fit and Predict
+    st = time.time()
     ensemble_model.fit(ensemble_train_X, ensemble_train_y)
+    fit_time = time.time() - st
 
+    st = time.time()
     if oracle:
         # Special case for virtual oracle-like predictors
         y_pred_ensemble_model = ensemble_model.oracle_predict(ensemble_test_X, ensemble_test_y)
     else:
         y_pred_ensemble_model = ensemble_model.predict(ensemble_test_X)
+    predict_time = time.time() - st
 
-    return y_pred_ensemble_model
+    run_meta_data = {"fit_time": fit_time, "predict_time": predict_time}
+
+    return y_pred_ensemble_model, run_meta_data
