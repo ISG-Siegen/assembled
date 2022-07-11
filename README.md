@@ -145,7 +145,7 @@ _First Conference on Automated Machine Learning (Late-Breaking Workshop), 2022_
 
 ```
 @inproceedings{purucker2022assembledopenml,
-    title={Assembled-Open{ML}: Creating Efficient Benchmarks for Ensembles with Open{ML}},
+    title={Assembled-Open{ML}: Creating Efficient Benchmarks for Ensembles in Auto{ML} with Open{ML}},
     author={Lennart Purucker and Joeran Beel},
     booktitle={First Conference on Automated Machine Learning (Late-Breaking Workshop)},
     year={2022}
