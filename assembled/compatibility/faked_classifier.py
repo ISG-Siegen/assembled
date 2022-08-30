@@ -154,16 +154,16 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         prediction_indices = sorter[np.searchsorted(self.oracle_index_,
                                                     test_data_hash_indices, sorter=sorter)]
 
-        # Update labels similar to that in the meta model (FIXME, this wont work always...)
+        # Update labels similar to that in the meta model
         if self.label_encoder:
-            predictions = np.unique(self.predictions_, return_inverse=True)[1][prediction_indices]
+            predictions = self.le_.transform(self.predictions_[prediction_indices])
         else:
             predictions = self.predictions_[prediction_indices]
 
         if self.simulate_time:
             time.sleep(self.predict_time_)
 
-        return self.classes_[self.le_.transform(predictions)]
+        return predictions
 
     def predict_proba(self, X):
         """ Predicting with the fake classifier, that is, returning the previously stored confidences.
