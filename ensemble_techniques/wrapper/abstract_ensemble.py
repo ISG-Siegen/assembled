@@ -106,6 +106,36 @@ class AbstractEnsemble(object):
 
         return self.transform_ensemble_prediction(ensemble_output)
 
+    def predict_proba(self, X):
+        """Predicting with the ensemble.
+         To do so, we get the predictions of the base models and pass it to the ensemble
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            The input samples.
+
+        Returns
+        -------
+        y : ndarray, shape (n_samples, n_classes)
+            Vector containing the class probabilities for each class for each sample.
+        """
+        check_is_fitted(self, ["le_", "classes_"])
+        X = check_array(X)
+
+        if self.passthrough:
+            raise NotImplemented("Predict Proba for Passthrough is not yet implemented.")
+            ensemble_output = self.ensemble_passthrough_predict(X, self.base_models_predictions_for_ensemble_predict(X))
+        else:
+
+            if self.output_method == "predict_proba":
+                ensemble_output = self.ensemble_predict(self.base_models_predictions_for_ensemble_predict(X))
+            else:
+                raise NotImplemented("Predict Proba for non-default proba predictors is not yet implemented.")
+                ensemble_output = self.ensemble_predict_proba(self.base_models_predictions_for_ensemble_predict(X))
+
+        return ensemble_output
+
     def base_models_predictions(self, X):
         if self.predict_method == "predict":
             return [bm.predict(X) for bm in self.base_models]

@@ -16,6 +16,8 @@ from tests.assembled_metatask_util import build_metatask_with_validation_data_wi
     build_metatask_with_validation_data_same_base_models_all_folds
 from assembled.ensemble_evaluation import evaluate_ensemble_on_metatask
 from assembled.utils.data_mgmt import merge_fold_results
+from ensemble_techniques.util.metrics import make_metric
+from sklearn.metrics import roc_auc_score
 
 
 def test_evaluation_with_validation_data():
@@ -116,7 +118,38 @@ def test_evaluation_with_holdout_validation_data():
     np.testing.assert_array_equal(fold_scores, expected_perf)
 
 
-def test_ensemble_evaluation_file_output():
+def test_evaluation_with_proba_metric():
+    random_base_seed_models = 1
+    mt, _ = build_metatask_with_validation_data_same_base_models_all_folds()
+
+    metric = make_metric(roc_auc_score,
+                         metric_name="roc_auc",
+                         maximize=True,
+                         classification=True,
+                         always_transform_conf_to_pred=False,
+                         optimum_value=1,
+                         requires_confidences=True,
+                         only_positive_class=True,
+                         pos_label=1)
+
+    # Example on how to evaluate base models with a metatask that includes validation data
+    technique_run_args = {"ensemble_size": 1,
+                          "metric": metric,
+                          "random_state": np.random.RandomState(random_base_seed_models)
+                          }
+
+    fold_scores = evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                                "autosklearn.EnsembleSelection",
+                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                                use_validation_data_to_train_ensemble_techniques=True,
+                                                return_scores=metric,
+                                                predict_method="predict_proba")
+
+    assert all(np.isclose(fold_scores, np.array([0.993506, 1., 1., 0.997354,
+                                                 0.945106, 0.970899, 0.970899, 1., 0.993386, 0.97551])))
+
+
+def test_ensemble_evaluation_file_output_predict():
     # Paths
     base_path = Path(__file__).parent.resolve()
     path_to_known_output = str(base_path.joinpath("known_output_format/known_results_for_metatask_-1.csv"))
@@ -194,6 +227,83 @@ def test_ensemble_evaluation_file_output():
                                   store_results="parallel")
 
     merge_fold_results(base_path, mt.openml_task_id, mt.is_classification)
+
+    # --- Assert Parallel Results
+    assert filecmp.cmp(path_to_known_output, path_to_create_output)
+    os.remove(path_to_create_output)
+
+    # --- Assert Parallel Metadata
+    _verify_metadata(path_to_create_metadata, ["autosklearn.EnsembleSelection1", "autosklearn.EnsembleSelection2",
+                                               "autosklearn.EnsembleSelection3"], mt.max_fold + 1)
+    os.remove(path_to_create_metadata)
+
+
+def test_ensemble_evaluation_file_output_predict_proba():
+    # Paths
+    base_path = Path(__file__).parent.resolve()
+    path_to_known_output = str(
+        base_path.joinpath("known_output_format/known_results_predict_proba_for_metatask_-1.csv"))
+    path_to_create_output = str(base_path.joinpath("results_for_metatask_-1.csv"))
+    path_to_create_metadata = str(base_path.joinpath("evaluation_metadata_for_metatask_-1.json"))
+    base_path = str(base_path)
+
+    # Ensemble and Metatask stuff
+    metric = make_metric(roc_auc_score,
+                         metric_name="roc_auc",
+                         maximize=True,
+                         classification=True,
+                         always_transform_conf_to_pred=False,
+                         optimum_value=1,
+                         requires_confidences=True,
+                         only_positive_class=True,
+                         pos_label=1)
+
+    mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds()
+    technique_run_args = {"ensemble_size": 1, "metric": metric, "random_state": np.random.RandomState(1)}
+    eval_args = {"pre_fit_base_models": True, "preprocessor": get_default_preprocessing(),
+                 "use_validation_data_to_train_ensemble_techniques": True, "return_scores": metric,
+                 "output_dir_path": base_path, "save_evaluation_metadata": True, "predict_method": "predict_proba"}
+
+    # --- Test Save Sequentially
+    evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                  "autosklearn.EnsembleSelection1", store_results="sequential",
+                                  **eval_args)
+
+    evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                  "autosklearn.EnsembleSelection2", store_results="sequential",
+                                  **eval_args)
+
+    evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                  "autosklearn.EnsembleSelection3",
+                                  store_results="sequential",
+                                  **eval_args)
+
+    # --- Assert Sequential Results
+    assert filecmp.cmp(path_to_known_output, path_to_create_output)
+    os.remove(path_to_create_output)
+
+    # --- Assert Sequential Metadata
+    _verify_metadata(path_to_create_metadata, ["autosklearn.EnsembleSelection1", "autosklearn.EnsembleSelection2",
+                                               "autosklearn.EnsembleSelection3"], mt.max_fold + 1)
+    os.remove(path_to_create_metadata)
+
+    # --- Test Save Parallel
+    evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                  "autosklearn.EnsembleSelection1",
+                                  store_results="parallel",
+                                  **eval_args)
+
+    evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                  "autosklearn.EnsembleSelection2",
+                                  store_results="parallel",
+                                  **eval_args)
+
+    evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                  "autosklearn.EnsembleSelection3",
+                                  store_results="parallel",
+                                  **eval_args)
+
+    merge_fold_results(base_path, mt.openml_task_id, mt.is_classification, predict_method="predict_proba")
 
     # --- Assert Parallel Results
     assert filecmp.cmp(path_to_known_output, path_to_create_output)

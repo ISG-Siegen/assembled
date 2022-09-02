@@ -22,7 +22,8 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
                                   pre_fit_base_models: bool = False, base_models_with_names: bool = False,
                                   label_encoder=False, preprocessor=None, output_dir_path=None,
                                   store_results: str = "sequential", save_evaluation_metadata: bool = False,
-                                  oracle=False, probability_calibration="no", return_scores: Optional[Callable] = None,
+                                  oracle=False, probability_calibration="no", predict_method: str = "predict",
+                                  return_scores: Optional[Callable] = None,
                                   verbose: bool = False, isolate_ensemble_execution: bool = False):
     """Run an ensemble technique on all folds and return the results
 
@@ -90,6 +91,9 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         cross_val_predictions by our Faked Base Models.
         If pre_fit_base_models is True, CalibratedClassifierCV is employed with cv="prefit" beforehand such that
         we "replace" the base models with calibrated base models.
+    predict_method: str in {"predict", "predict_proba"}, default="predict"
+        Predict method used. For regression only "predict" works. For classification, predict_proba will return
+        prediction probabilities (a.k.a. confidences).
     return_scores: Callable, default=None
         If the evaluation shall return the scores for each fold. If not None, a metric function is expected.
     verbose: bool, default=False
@@ -113,9 +117,12 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
             raise ValueError("The option isolate_ensemble_execution can currently not be used on Windows!")
 
     if store_results not in ["sequential", "parallel"]:
-        raise ValueError(
-            "Store_results parameter has a wrong value. Allowed are: {}. Got: {}".format(["sequential", "parallel"],
-                                                                                         store_results))
+        raise ValueError("Store_results parameter has a wrong value. Allowed are: {}. Got: {}".format(
+            ["sequential", "parallel"], store_results))
+
+    if predict_method not in ["predict", "predict_proba"]:
+        raise ValueError("predict_method parameter has a wrong value. Allowed are: {}. Got: {}".format(
+            ["predict", "predict_proba"], predict_method))
 
     # -- Re-names
     val_data = use_validation_data_to_train_ensemble_techniques
@@ -171,7 +178,7 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
             logger.info("Run Ensemble on Fold")
 
         func_args = (base_models, technique, technique_args, ensemble_train_X, ensemble_test_X, ensemble_train_y,
-                     ensemble_test_y, oracle)
+                     ensemble_test_y, oracle, predict_method)
         func = _run_ensemble_on_data
 
         if isolate_ensemble_execution:
@@ -195,7 +202,8 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
 
         # -- Post Process Results
         save_results(output_dir_path, store_results, save_evaluation_metadata, ensemble_test_y, y_pred_ensemble_model,
-                     fold_idx, technique_name, test_indices, metatask.openml_task_id, run_meta_data)
+                     fold_idx, technique_name, test_indices, metatask.openml_task_id, run_meta_data, predict_method,
+                     metatask.class_labels)
 
         # -- Save scores for return
         if return_scores is not None:
@@ -366,7 +374,7 @@ def _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
 
 
 def _run_ensemble_on_data(base_models, technique, technique_args, ensemble_train_X, ensemble_test_X,
-                          ensemble_train_y, ensemble_test_y, oracle):
+                          ensemble_train_y, ensemble_test_y, oracle, predict_method):
     """Run an ensemble technique for the given data and return its predictions
 
     New Parameters (rest can be found in signature of run_ensemble_on_all_folds or _build_fake_base_models)
@@ -389,10 +397,20 @@ def _run_ensemble_on_data(base_models, technique, technique_args, ensemble_train
 
     st = time.time()
     if oracle:
+
+        if predict_method == "predict_proba":
+            raise NotImplemented("Prediction Probabilities are not supported (yet) for Oracle Predictors!")
+
         # Special case for virtual oracle-like predictors
         y_pred_ensemble_model = ensemble_model.oracle_predict(ensemble_test_X, ensemble_test_y)
+
     else:
-        y_pred_ensemble_model = ensemble_model.predict(ensemble_test_X)
+
+        if predict_method == "predict":
+            y_pred_ensemble_model = ensemble_model.predict(ensemble_test_X)
+        else:
+            y_pred_ensemble_model = ensemble_model.predict_proba(ensemble_test_X)
+
     predict_time = time.time() - st
 
     run_meta_data = {"fit_time": fit_time, "predict_time": predict_time}
