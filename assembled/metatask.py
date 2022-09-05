@@ -28,13 +28,13 @@ class MetaTask:
         If True, we use pandas' sparse dtype to store data that is specific to a fold. This can drastically reduce
         the memory usage.
         Currently, due to a bug of pandas, only for confidence columns. FIXME fix this (make all labels numbers?)
-    use_hdf_file_format: bool, default=False
-        If True, we use the hdf file format to save and load the meta-dataset.
+    file_format: str in {"hdf", "csv", "feather"}, default="csv"
+        Determines which file format to use.
     """
 
-    def __init__(self, use_sparse_dtype: bool = True, use_hdf_file_format: bool = False):
+    def __init__(self, use_sparse_dtype: bool = True, file_format: str = "csv"):
         self.use_sparse_dtype = use_sparse_dtype
-        self.use_hdf_file_format = use_hdf_file_format
+        self.file_format = file_format
 
         # -- for dataset init
         self.dataset = None
@@ -177,7 +177,7 @@ class MetaTask:
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
                 "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
                 "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices", "use_sparse_dtype",
-                "use_hdf_file_format"]
+                "file_format"]
 
     # -- Properties related to meta_dataset
     @property
@@ -715,6 +715,15 @@ class MetaTask:
         self.folds = fold_indicator
 
     # - Metatask to files
+    def _get_file_format(self):
+        out_f = self.file_format
+
+        # Backwards compatibility
+        if hasattr(self, "use_hdf_file_format") and self.use_hdf_file_format:
+            out_f = "hdf"
+
+        return out_f
+
     def to_files(self, output_dir: str = ""):
         """Store the metatask in two files. One .csv (or .hdf) and .json file
 
@@ -725,26 +734,7 @@ class MetaTask:
         output_dir:  str
             Directory in which the .json and .csv files for the metatask shall be stored.
         """
-        # -- Store the predictions together with the dataset in one file
-        if self.use_hdf_file_format:
-            logger.info("Start Saving to HDF File...")
-            file_path_hdf = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
-            self.meta_dataset[self.dense_columns].to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
-                                                         format="table")
-
-            # Go in chunks over the columns
-            for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
-                logger.info("Saving Column Chunks {}".format(chunk_idx))
-                # Get part of dataset to save and change its type
-                dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
-                self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()).astype(
-                    dtypes_dict).to_hdf(file_path_hdf, str(self.openml_task_id) + str(to_save_cols), mode="r+",
-                                        format="table", append=True)
-
-        else:
-            logger.info("Start Saving to CSV File...")
-            file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
-            self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
+        self.store_meta_dataset(output_dir)
 
         # -- Store Meta data in its onw file
         logger.info("Start Saving to JSON File...")
@@ -759,6 +749,34 @@ class MetaTask:
             json.dump(meta_data, f, ensure_ascii=False, indent=4)
 
         logger.info("Finished Saving Metatask to Files.")
+
+    def store_meta_dataset(self, output_dir):
+        # -- Determine output format
+        out_f = self._get_file_format()
+
+        # -- Store the predictions together with the dataset in one file
+        if out_f == "hdf":
+            logger.info("Start Saving to HDF File...")
+            file_path_hdf = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
+            self.meta_dataset[self.dense_columns].to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
+                                                         format="table")
+
+            # Go in chunks over the columns
+            for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
+                logger.info("Saving Column Chunks {}".format(chunk_idx))
+                # Get part of dataset to save and change its type
+                dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
+                self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()).astype(
+                    dtypes_dict).to_hdf(file_path_hdf, str(self.openml_task_id) + str(to_save_cols), mode="r+",
+                                        format="table", append=True)
+
+        elif out_f == "csv":
+            logger.info("Start Saving to CSV File...")
+            file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
+            self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
+
+        else:
+            raise ValueError("Unknown Output Format: {}".format(out_f))
 
     def to_sharable_prediction_data(self, output_dir: str = ""):
         """Store Metatasks without dataset (e.g., all data but self.dataset's rows)"""
@@ -793,7 +811,7 @@ class MetaTask:
 
         # -- Init Meta Data
         for md_k in meta_data.keys():
-            setattr(self, md_k, meta_data[md_k])
+            setattr(self, md_k, meta_data[md_k])  # Supports backwards compatibility
 
         # Post process special cases (setting arrays to arrays)
         self.folds = np.array(self.folds)
@@ -803,8 +821,10 @@ class MetaTask:
         self.missing_metadata_in_file = [x for x in self.meta_data_keys if x not in meta_data.keys()]
         del meta_data
 
+        out_f = self._get_file_format()
+
         # -- Read Dataset
-        if not self.use_hdf_file_format:
+        if out_f == "csv":
             file_path_csv = os.path.join(input_dir, "metatask_{}.csv".format(openml_task_id))
 
             dtypes_to_read = {col_name: 'category' for col_name in self.cat_feature_names}
@@ -832,7 +852,7 @@ class MetaTask:
 
             else:
                 meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
-        else:
+        elif out_f == "hdf":
             file_path_hdf = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
             meta_dataset = pd.read_hdf(file_path_hdf, key=str(openml_task_id))
 
@@ -842,6 +862,9 @@ class MetaTask:
                 dtypes_dict = self.get_load_dtypes_for_columns(to_load_cols)
                 meta_dataset[to_load_cols] = pd.read_hdf(file_path_hdf, key=str(openml_task_id)
                                                                             + str(to_load_cols)).astype(dtypes_dict)
+
+        else:
+            raise ValueError("Unknown file format: {}".format(out_f))
 
         self.dataset = meta_dataset[self.feature_names + [self.target_name]]
         self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]

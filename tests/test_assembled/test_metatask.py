@@ -234,7 +234,7 @@ class TestMetaTask:
         delete_metatask_files(self.base_path / "example_metatasks", -12)
 
     def test_hdf_file_format(self):
-        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, hdf=True,
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, file_format="hdf",
                                                                                            sparse=False)
         mt.to_files(self.base_path / "example_metatasks")
 
@@ -244,7 +244,7 @@ class TestMetaTask:
         assert r_mt == mt
         delete_metatask_files(self.base_path / "example_metatasks", -12, hdf=True)
 
-        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, hdf=True,
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, file_format="hdf",
                                                                                            sparse=True)
         mt.to_files(self.base_path / "example_metatasks")
 
