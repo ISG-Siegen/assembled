@@ -234,7 +234,9 @@ class TestMetaTask:
         delete_metatask_files(self.base_path / "example_metatasks", -12)
 
     def test_hdf_file_format(self):
-        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, file_format="hdf",
+        file_format = "hdf"
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12,
+                                                                                           file_format=file_format,
                                                                                            sparse=False)
         mt.to_files(self.base_path / "example_metatasks")
 
@@ -242,9 +244,10 @@ class TestMetaTask:
         r_mt.read_metatask_from_files(self.base_path / "example_metatasks", -12)
 
         assert r_mt == mt
-        delete_metatask_files(self.base_path / "example_metatasks", -12, hdf=True)
+        delete_metatask_files(self.base_path / "example_metatasks", -12, file_format=file_format)
 
-        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12, file_format="hdf",
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12,
+                                                                                           file_format=file_format,
                                                                                            sparse=True)
         mt.to_files(self.base_path / "example_metatasks")
 
@@ -252,4 +255,28 @@ class TestMetaTask:
         r_mt.read_metatask_from_files(self.base_path / "example_metatasks", -12)
 
         assert r_mt == mt
-        delete_metatask_files(self.base_path / "example_metatasks", -12, hdf=True)
+        delete_metatask_files(self.base_path / "example_metatasks", -12, file_format=file_format)
+
+    def test_feather_file_format(self):
+        file_format = "feather"
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12,
+                                                                                           file_format=file_format,
+                                                                                           sparse=False)
+        mt.to_files(self.base_path / "example_metatasks")
+
+        r_mt = MetaTask()
+        r_mt.read_metatask_from_files(self.base_path / "example_metatasks", -12)
+
+        assert r_mt == mt
+        delete_metatask_files(self.base_path / "example_metatasks", -12, file_format=file_format)
+
+        mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12,
+                                                                                           file_format=file_format,
+                                                                                           sparse=True)
+        mt.to_files(self.base_path / "example_metatasks")
+
+        r_mt = MetaTask()
+        r_mt.read_metatask_from_files(self.base_path / "example_metatasks", -12)
+
+        assert r_mt == mt
+        delete_metatask_files(self.base_path / "example_metatasks", -12, file_format=file_format)

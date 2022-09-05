@@ -2,6 +2,8 @@ import os
 
 import numpy as np
 
+from shutil import rmtree
+
 from assembled.metatask import MetaTask
 
 from sklearn.ensemble import RandomForestClassifier
@@ -277,10 +279,10 @@ def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=N
     return mt, expected_perf
 
 
-def delete_metatask_files(base_path, task_id, hdf=False):
-    if hdf:
-        os.remove(os.path.join(base_path, "metatask_{}.hdf".format(task_id)))
-    else:
-        os.remove(os.path.join(base_path, "metatask_{}.csv".format(task_id)))
+def delete_metatask_files(base_path, task_id, file_format="csv"):
 
+    if file_format == "feather":
+        rmtree(os.path.join(base_path, "metatask_{}".format(task_id)))
+    else:
+        os.remove(os.path.join(base_path, "metatask_{}.{}".format(task_id, file_format)))
     os.remove(os.path.join(base_path, "metatask_{}.json".format(task_id)))

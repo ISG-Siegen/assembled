@@ -69,6 +69,7 @@ class MetaTask:
         self.confidence_prefix = "confidence"
         self.fold_postfix = "fold"
         self.fold_predictor_prefix = "FP"
+        self.save_chunk_size = 500
 
         # -- Randomness (Experimental)
         self.random_int_seed_outer_folds = None
@@ -212,8 +213,11 @@ class MetaTask:
 
     @property
     def yield_sparse_columns_chunks(self):
-        n = 100
+        n = self.save_chunk_size
         sparse_cols = self.sparse_columns
+
+        logger.info(
+            "Chunk Size: {} | #Columns: {} | Expected Chunks: {}".format(n, len(sparse_cols), len(sparse_cols) // n))
         for i in range(0, len(sparse_cols), n):
             yield sparse_cols[i:i + n]
 
@@ -751,7 +755,6 @@ class MetaTask:
         logger.info("Finished Saving Metatask to Files.")
 
     def store_meta_dataset(self, output_dir):
-        # -- Determine output format
         out_f = self._get_file_format()
 
         # -- Store the predictions together with the dataset in one file
@@ -763,7 +766,7 @@ class MetaTask:
 
             # Go in chunks over the columns
             for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
-                logger.info("Saving Column Chunks {}".format(chunk_idx))
+                logger.info("Saving Column Chunk {}".format(chunk_idx))
                 # Get part of dataset to save and change its type
                 dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
                 self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()).astype(
@@ -775,6 +778,22 @@ class MetaTask:
             file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
             self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
 
+        elif out_f == "feather":
+            logger.info("Start Saving to Feather File...")
+            save_dir = os.path.join(output_dir, "metatask_{}".format(self.openml_task_id))
+            os.makedirs(save_dir, exist_ok=True)
+
+            logger.info("Start Saving Dense columns to feather File...")
+            dense_p = os.path.join(save_dir, "dense_metatask_{}.feather".format(self.openml_task_id))
+            self.meta_dataset[self.dense_columns].to_feather(dense_p)
+
+            logger.info("Start Saving Sparse columns to feather File...")
+            for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
+                logger.info("Saving Column Chunk {}".format(chunk_idx))
+                dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
+                s_chunk_p = os.path.join(save_dir,"sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
+                self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()
+                                                      ).astype(dtypes_dict).to_feather(s_chunk_p)
         else:
             raise ValueError("Unknown Output Format: {}".format(out_f))
 
@@ -821,6 +840,23 @@ class MetaTask:
         self.missing_metadata_in_file = [x for x in self.meta_data_keys if x not in meta_data.keys()]
         del meta_data
 
+        # -- Get and parse dataset
+        meta_dataset = self.read_meta_dataset(input_dir, openml_task_id)
+
+        self.dataset = meta_dataset[self.feature_names + [self.target_name]]
+        self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
+
+        if self.validation_predictions_columns or self.validation_confidences_columns:
+            self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
+                                                                       self.validation_confidences_columns]
+        else:
+            self.validation_predictions_and_confidences = pd.DataFrame()
+        del meta_dataset
+
+        if not read_wo_dataset:
+            self._dataset_sanity_checks()
+
+    def read_meta_dataset(self, input_dir, openml_task_id):
         out_f = self._get_file_format()
 
         # -- Read Dataset
@@ -852,6 +888,7 @@ class MetaTask:
 
             else:
                 meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
+
         elif out_f == "hdf":
             file_path_hdf = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
             meta_dataset = pd.read_hdf(file_path_hdf, key=str(openml_task_id))
@@ -863,21 +900,24 @@ class MetaTask:
                 meta_dataset[to_load_cols] = pd.read_hdf(file_path_hdf, key=str(openml_task_id)
                                                                             + str(to_load_cols)).astype(dtypes_dict)
 
+        elif out_f == "feather":
+            logger.info("Start Loading Feather File...")
+            save_dir = os.path.join(input_dir, "metatask_{}".format(self.openml_task_id))
+
+            logger.info("Start Loading Dense columns...")
+            dense_p = os.path.join(save_dir, "dense_metatask_{}.feather".format(self.openml_task_id))
+            meta_dataset = pd.read_feather(dense_p)
+
+            logger.info("Start Loading Sparse columns...")
+            for chunk_idx, to_load_cols in enumerate(self.yield_sparse_columns_chunks, 1):
+                dtypes_dict = self.get_load_dtypes_for_columns(to_load_cols)
+                s_chunk_p = os.path.join(save_dir,"sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
+                meta_dataset[to_load_cols] = pd.read_feather(s_chunk_p).astype(dtypes_dict)
+
         else:
             raise ValueError("Unknown file format: {}".format(out_f))
 
-        self.dataset = meta_dataset[self.feature_names + [self.target_name]]
-        self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
-
-        if self.validation_predictions_columns or self.validation_confidences_columns:
-            self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
-                                                                       self.validation_confidences_columns]
-        else:
-            self.validation_predictions_and_confidences = pd.DataFrame()
-        del meta_dataset
-
-        if not read_wo_dataset:
-            self._dataset_sanity_checks()
+        return meta_dataset
 
     def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
         # Get Shared Data
