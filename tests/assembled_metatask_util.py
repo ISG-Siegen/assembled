@@ -281,8 +281,10 @@ def build_metatask_with_validation_data_same_base_models_all_folds(openml_task=N
 
 def delete_metatask_files(base_path, task_id, file_format="csv"):
 
-    if file_format == "feather":
+    if file_format in ["feather"]:
         rmtree(os.path.join(base_path, "metatask_{}".format(task_id)))
+    elif file_format.endswith("_split"):
+        os.remove(os.path.join(base_path, "metatask_{}.{}".format(task_id, file_format.removesuffix("_split"))))
     else:
         os.remove(os.path.join(base_path, "metatask_{}.{}".format(task_id, file_format)))
     os.remove(os.path.join(base_path, "metatask_{}.json".format(task_id)))

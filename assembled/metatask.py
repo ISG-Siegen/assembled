@@ -779,7 +779,7 @@ class MetaTask:
             self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
 
         elif out_f == "feather":
-            logger.info("Start Saving to Feather File...")
+            logger.info("Start Saving to Feather Files...")
             save_dir = os.path.join(output_dir, "metatask_{}".format(self.openml_task_id))
             os.makedirs(save_dir, exist_ok=True)
 
@@ -791,9 +791,37 @@ class MetaTask:
             for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
                 logger.info("Saving Column Chunk {}".format(chunk_idx))
                 dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
-                s_chunk_p = os.path.join(save_dir,"sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
+                s_chunk_p = os.path.join(save_dir,
+                                         "sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
                 self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()
                                                       ).astype(dtypes_dict).to_feather(s_chunk_p)
+        elif out_f == "hdf_split":
+            logger.info("Start Saving to HDF as Split Files...")
+            save_p = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
+
+            logger.info("Start Saving Dataset...")
+            self.dataset.to_hdf(save_p, "dataset", mode="w", format="table")
+
+            logger.info("Start Saving Prediction Data...")
+            fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
+            sparse_catcher = lambda x: x.sparse.to_dense() if pd.api.types.is_sparse(x) else x
+            for fold_index in fold_indices:
+                logger.info("Save for Fold: {}".format(fold_index))
+                f_pred = self.get_predictors_for_fold(fold_index)
+
+                logger.info("Save Test Prediction Data...")
+                f_cols = self.get_pred_and_conf_cols(f_pred)
+                _, f_test_i = self.get_indices_for_fold(fold_index)
+                self.predictions_and_confidences.loc[f_test_i, f_cols].apply(sparse_catcher) \
+                    .to_hdf(save_p, "t_p_d_{}".format(fold_index), mode="r+", format="table")
+
+                if self.use_validation_data:
+                    logger.info("Save Validation Prediction Data...")
+                    f_cols = self.get_validation_predictions_columns(f_pred) \
+                             + self.get_validation_confidences_columns(f_pred)
+                    f_val_i = self.validation_indices[fold_index]
+                    self.validation_predictions_and_confidences.loc[f_val_i, f_cols].apply(sparse_catcher) \
+                        .to_hdf(save_p, "v_p_d_{}".format(fold_index), mode="r+", format="table")
         else:
             raise ValueError("Unknown Output Format: {}".format(out_f))
 
@@ -911,13 +939,63 @@ class MetaTask:
             logger.info("Start Loading Sparse columns...")
             for chunk_idx, to_load_cols in enumerate(self.yield_sparse_columns_chunks, 1):
                 dtypes_dict = self.get_load_dtypes_for_columns(to_load_cols)
-                s_chunk_p = os.path.join(save_dir,"sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
+                s_chunk_p = os.path.join(save_dir,
+                                         "sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
                 meta_dataset[to_load_cols] = pd.read_feather(s_chunk_p).astype(dtypes_dict)
 
+        elif out_f == "hdf_split":
+            logger.info("Start Loading from HDF Split Files...")
+            load_p = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
+
+            logger.info("Start Loading Dataset...")
+            meta_dataset = pd.read_hdf(load_p, "dataset")
+
+            logger.info("Start Loading Prediction Data...")
+            # Iteration
+            fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
+            for fold_index in fold_indices:
+                logger.info("Load for Fold: {}".format(fold_index))
+
+                logger.info("Load Test Prediction Data...")
+                _, f_test_i = self.get_indices_for_fold(fold_index)
+                tmp_pd = pd.read_hdf(load_p, "t_p_d_{}".format(fold_index))
+
+                # Set up dataframe
+                dtype_dict = self._find_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
+                for c_n, (load_dt, final_dt) in dtype_dict.items():
+                    meta_dataset[c_n] = pd.Series(dtype=load_dt)
+                    meta_dataset.loc[f_test_i, c_n] = tmp_pd[c_n]
+                    meta_dataset[c_n] = meta_dataset[c_n].astype(final_dt)
+                del tmp_pd
+
+                if self.use_validation_data:
+                    logger.info("Load Validation Prediction Data...")
+                    f_val_i = self.validation_indices[fold_index]
+                    tmp_pd = pd.read_hdf(load_p, "v_p_d_{}".format(fold_index))
+                    # Set up dataframe
+                    dtype_dict = self._find_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
+                    for c_n, (load_dt, final_dt) in dtype_dict.items():
+                        meta_dataset[c_n] = pd.Series(dtype=load_dt)
+                        meta_dataset.loc[f_val_i, c_n] = tmp_pd[c_n]
+                        meta_dataset[c_n] = meta_dataset[c_n].astype(final_dt)
+                    del tmp_pd
         else:
             raise ValueError("Unknown file format: {}".format(out_f))
 
         return meta_dataset
+
+    def _find_dtypes(self, col_types):
+        res = {}
+        for col_name, i_dtype in col_types:
+            load_dtype = i_dtype
+            final_dtype = i_dtype
+
+            if col_name in self.sparse_columns:
+                final_dtype = pd.SparseDtype("float64", np.nan)
+
+            res[col_name] = (load_dtype, final_dtype)
+
+        return res
 
     def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
         # Get Shared Data
