@@ -941,67 +941,54 @@ class MetaTask:
             fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
             for fold_index in fold_indices:
                 logger.info("Load for Fold: {}".format(fold_index))
-                f_pred = self.get_predictors_for_fold(fold_index)
 
                 logger.info("Load Test Prediction Data...")
-                _, f_test_i = self.get_indices_for_fold(fold_index)
-                f_cols = self.get_pred_and_conf_cols(f_pred)
-
-                meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "t_p_d_{}".format(fold_index),
-                                           f_cols, f_test_i)
+                meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "t_p_d_{}".format(fold_index))
 
                 if self.use_validation_data:
                     logger.info("Load Validation Prediction Data...")
-                    f_val_i = self.validation_indices[fold_index]
-                    f_cols = self.get_validation_predictions_columns(f_pred) \
-                             + self.get_validation_confidences_columns(f_pred)
-
-                    meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "v_p_d_{}".format(fold_index),
-                                               f_cols, f_val_i)
+                    meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "v_p_d_{}".format(fold_index))
         else:
             raise ValueError("Unknown file format: {}".format(out_f))
 
         return meta_dataset
 
-    def _find_load_dtypes(self, col_types):
-        res = {}
-        for col_name, i_dtype in col_types:
-            load_dtype = i_dtype
-            final_dtype = i_dtype
-
-            if col_name in self.sparse_columns:
-                final_dtype = pd.SparseDtype("float64", np.nan)
-
-            res[col_name] = (load_dtype, final_dtype)
-
-        return res
-
-    def _read_from_hdf_splits(self, df_to_store_in, in_path, hdf_key, cols, indices):
-        # This is equivalent to the order produced before.
+    def _read_from_hdf_splits(self, df_to_store_in, in_path, hdf_key):
         chunk_indices = pd.read_hdf(in_path, hdf_key + "_md").tolist()
+        sparse_cols = set(self.sparse_columns)
+        full_indices = df_to_store_in.index
+        tmp_df_store = pd.DataFrame(index=full_indices)
+
         for i in chunk_indices:
+            # Load Data
             tmp_pd = pd.read_hdf(in_path, hdf_key + f"_{i}")
+            indices = tmp_pd.index
 
-            # Handle Dtypes
-            dtype_dict = self._find_load_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
-
-            # Sort keys
+            # Determine dtype
             all_cols_for_type = {}
-            for c_n, type_d in dtype_dict.items():
-                if type_d not in all_cols_for_type:
-                    all_cols_for_type[type_d] = []
-                all_cols_for_type[type_d].append(c_n)
+            for col_name, type_d in zip(tmp_pd.columns, tmp_pd.dtypes):
+                load_dtype = type_d
+                final_dtype = type_d
+
+                if col_name in sparse_cols:
+                    final_dtype = pd.SparseDtype("float64", np.nan)
+
+                use_key = (load_dtype, final_dtype)
+
+                if use_key not in all_cols_for_type:
+                    all_cols_for_type[use_key] = []
+
+                all_cols_for_type[use_key].append(col_name)
 
             # Handle insert into existing data
             for (load_dt, final_dt), col_names in all_cols_for_type.items():
-                df_to_store_in = pd.concat([df_to_store_in, pd.DataFrame(dtype=load_dt, columns=col_names)])
-                df_to_store_in.loc[indices, col_names] = tmp_pd[col_names]
-                df_to_store_in[col_names] = df_to_store_in[col_names].astype(final_dt)
+                tmp_df_store = pd.concat([tmp_df_store,
+                                          pd.DataFrame(index=full_indices, dtype=load_dt, columns=col_names)],
+                                         axis=1)
+                tmp_df_store.loc[indices, col_names] = tmp_pd[col_names]
+                tmp_df_store = tmp_df_store.astype({c: final_dt for c in col_names})
 
-            # Clean Up
-            del tmp_pd
-
-        return df_to_store_in
+        return pd.concat([df_to_store_in, tmp_df_store], axis=1)
 
     def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
         # Get Shared Data
