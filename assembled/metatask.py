@@ -947,7 +947,7 @@ class MetaTask:
                 _, f_test_i = self.get_indices_for_fold(fold_index)
                 f_cols = self.get_pred_and_conf_cols(f_pred)
 
-                self._read_from_hdf_splits(meta_dataset, load_p, "t_p_d_{}".format(fold_index),
+                meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "t_p_d_{}".format(fold_index),
                                            f_cols, f_test_i)
 
                 if self.use_validation_data:
@@ -956,7 +956,7 @@ class MetaTask:
                     f_cols = self.get_validation_predictions_columns(f_pred) \
                              + self.get_validation_confidences_columns(f_pred)
 
-                    self._read_from_hdf_splits(meta_dataset, load_p, "v_p_d_{}".format(fold_index),
+                    meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "v_p_d_{}".format(fold_index),
                                                f_cols, f_val_i)
         else:
             raise ValueError("Unknown file format: {}".format(out_f))
@@ -985,14 +985,23 @@ class MetaTask:
             # Handle Dtypes
             dtype_dict = self._find_load_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
 
+            # Sort keys
+            all_cols_for_type = {}
+            for c_n, type_d in dtype_dict.items():
+                if type_d not in all_cols_for_type:
+                    all_cols_for_type[type_d] = []
+                all_cols_for_type[type_d].append(c_n)
+
             # Handle insert into existing data
-            for c_n, (load_dt, final_dt) in dtype_dict.items():
-                df_to_store_in[c_n] = pd.Series(dtype=load_dt)
-                df_to_store_in.loc[indices, c_n] = tmp_pd[c_n]
-                df_to_store_in[c_n] = df_to_store_in[c_n].astype(final_dt)
+            for (load_dt, final_dt), col_names in all_cols_for_type.items():
+                df_to_store_in = pd.concat([df_to_store_in, pd.DataFrame(dtype=load_dt, columns=col_names)])
+                df_to_store_in.loc[indices, col_names] = tmp_pd[col_names]
+                df_to_store_in[col_names] = df_to_store_in[col_names].astype(final_dt)
 
             # Clean Up
             del tmp_pd
+
+        return df_to_store_in
 
     def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
         # Get Shared Data
