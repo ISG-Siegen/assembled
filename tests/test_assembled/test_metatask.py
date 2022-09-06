@@ -235,7 +235,7 @@ class TestMetaTask:
 
     def test_custom_file_formats(self):
 
-        for file_format in ["hdf_split", "hdf", "feather"]:
+        for file_format in ["hdf", "feather"]:
             print(file_format)
             mt, _, _ = build_metatask_with_validation_data_with_different_base_models_per_fold(fake_id=-12,
                                                                                                file_format=file_format,

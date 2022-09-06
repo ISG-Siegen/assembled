@@ -69,7 +69,7 @@ class MetaTask:
         self.confidence_prefix = "confidence"
         self.fold_postfix = "fold"
         self.fold_predictor_prefix = "FP"
-        self.save_chunk_size = 500
+        self.save_chunk_size = 1500
 
         # -- Randomness (Experimental)
         self.random_int_seed_outer_folds = None
@@ -722,10 +722,6 @@ class MetaTask:
     def _get_file_format(self):
         out_f = self.file_format
 
-        # Backwards compatibility
-        if hasattr(self, "use_hdf_file_format") and self.use_hdf_file_format:
-            out_f = "hdf"
-
         return out_f
 
     def to_files(self, output_dir: str = ""):
@@ -758,22 +754,7 @@ class MetaTask:
         out_f = self._get_file_format()
 
         # -- Store the predictions together with the dataset in one file
-        if out_f == "hdf":
-            logger.info("Start Saving to HDF File...")
-            file_path_hdf = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
-            self.meta_dataset[self.dense_columns].to_hdf(file_path_hdf, str(self.openml_task_id), mode="w",
-                                                         format="table")
-
-            # Go in chunks over the columns
-            for chunk_idx, to_save_cols in enumerate(self.yield_sparse_columns_chunks, 1):
-                logger.info("Saving Column Chunk {}".format(chunk_idx))
-                # Get part of dataset to save and change its type
-                dtypes_dict = self.get_save_dtypes_for_columns(to_save_cols)
-                self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()).astype(
-                    dtypes_dict).to_hdf(file_path_hdf, str(self.openml_task_id) + str(to_save_cols), mode="r+",
-                                        format="table", append=True)
-
-        elif out_f == "csv":
+        if out_f == "csv":
             logger.info("Start Saving to CSV File...")
             file_path_csv = os.path.join(output_dir, "metatask_{}.csv".format(self.openml_task_id))
             self.meta_dataset.to_csv(file_path_csv, sep=",", header=True, index=False)
@@ -795,7 +776,7 @@ class MetaTask:
                                          "sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
                 self.meta_dataset[to_save_cols].apply(lambda x: x.values.to_dense()
                                                       ).astype(dtypes_dict).to_feather(s_chunk_p)
-        elif out_f == "hdf_split":
+        elif out_f == "hdf":
             logger.info("Start Saving to HDF as Split Files...")
             save_p = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
 
@@ -804,7 +785,6 @@ class MetaTask:
 
             logger.info("Start Saving Prediction Data...")
             fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
-            sparse_catcher = lambda x: x.sparse.to_dense() if pd.api.types.is_sparse(x) else x
             for fold_index in fold_indices:
                 logger.info("Save for Fold: {}".format(fold_index))
                 f_pred = self.get_predictors_for_fold(fold_index)
@@ -812,18 +792,35 @@ class MetaTask:
                 logger.info("Save Test Prediction Data...")
                 f_cols = self.get_pred_and_conf_cols(f_pred)
                 _, f_test_i = self.get_indices_for_fold(fold_index)
-                self.predictions_and_confidences.loc[f_test_i, f_cols].apply(sparse_catcher) \
-                    .to_hdf(save_p, "t_p_d_{}".format(fold_index), mode="r+", format="table")
+
+                self._save_to_hdf_splits(self.predictions_and_confidences.loc[f_test_i, f_cols],
+                                         save_p, "t_p_d_{}".format(fold_index))
 
                 if self.use_validation_data:
                     logger.info("Save Validation Prediction Data...")
                     f_cols = self.get_validation_predictions_columns(f_pred) \
                              + self.get_validation_confidences_columns(f_pred)
                     f_val_i = self.validation_indices[fold_index]
-                    self.validation_predictions_and_confidences.loc[f_val_i, f_cols].apply(sparse_catcher) \
-                        .to_hdf(save_p, "v_p_d_{}".format(fold_index), mode="r+", format="table")
+                    self._save_to_hdf_splits(self.validation_predictions_and_confidences.loc[f_val_i, f_cols],
+                                             save_p, "v_p_d_{}".format(fold_index))
+
         else:
             raise ValueError("Unknown Output Format: {}".format(out_f))
+
+    def _save_to_hdf_splits(self, df_to_save, out_path, hdf_key):
+        sparse_catcher = lambda x: x.sparse.to_dense() if pd.api.types.is_sparse(x) else x
+
+        # Avoid "object header message is too large" bug/feature of HDF
+        cols = list(df_to_save)  # This is equivalent to the order produced before.
+        n = self.save_chunk_size
+        chunk_indices = []
+        for i in range(0, len(cols), n):
+            chunk_indices.append(i)
+            col_chunk = cols[i:i + n]
+            df_to_save[col_chunk].apply(sparse_catcher).to_hdf(out_path, hdf_key + f"_{i}", mode="r+", format="table")
+
+        # Save Chunk metadata
+        pd.Series(chunk_indices).to_hdf(out_path, hdf_key + "_md", mode="r+", format="table")
 
     def to_sharable_prediction_data(self, output_dir: str = ""):
         """Store Metatasks without dataset (e.g., all data but self.dataset's rows)"""
@@ -917,17 +914,6 @@ class MetaTask:
             else:
                 meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
 
-        elif out_f == "hdf":
-            file_path_hdf = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
-            meta_dataset = pd.read_hdf(file_path_hdf, key=str(openml_task_id))
-
-            # Go in chunks over the columns
-            for to_load_cols in self.yield_sparse_columns_chunks:
-                # Get part of dataset to save and change its type
-                dtypes_dict = self.get_load_dtypes_for_columns(to_load_cols)
-                meta_dataset[to_load_cols] = pd.read_hdf(file_path_hdf, key=str(openml_task_id)
-                                                                            + str(to_load_cols)).astype(dtypes_dict)
-
         elif out_f == "feather":
             logger.info("Start Loading Feather File...")
             save_dir = os.path.join(input_dir, "metatask_{}".format(self.openml_task_id))
@@ -943,7 +929,7 @@ class MetaTask:
                                          "sparse_metatask_{}_{}.feather".format(self.openml_task_id, chunk_idx))
                 meta_dataset[to_load_cols] = pd.read_feather(s_chunk_p).astype(dtypes_dict)
 
-        elif out_f == "hdf_split":
+        elif out_f == "hdf":
             logger.info("Start Loading from HDF Split Files...")
             load_p = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
 
@@ -955,36 +941,29 @@ class MetaTask:
             fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
             for fold_index in fold_indices:
                 logger.info("Load for Fold: {}".format(fold_index))
+                f_pred = self.get_predictors_for_fold(fold_index)
 
                 logger.info("Load Test Prediction Data...")
                 _, f_test_i = self.get_indices_for_fold(fold_index)
-                tmp_pd = pd.read_hdf(load_p, "t_p_d_{}".format(fold_index))
+                f_cols = self.get_pred_and_conf_cols(f_pred)
 
-                # Set up dataframe
-                dtype_dict = self._find_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
-                for c_n, (load_dt, final_dt) in dtype_dict.items():
-                    meta_dataset[c_n] = pd.Series(dtype=load_dt)
-                    meta_dataset.loc[f_test_i, c_n] = tmp_pd[c_n]
-                    meta_dataset[c_n] = meta_dataset[c_n].astype(final_dt)
-                del tmp_pd
+                self._read_from_hdf_splits(meta_dataset, load_p, "t_p_d_{}".format(fold_index),
+                                           f_cols, f_test_i)
 
                 if self.use_validation_data:
                     logger.info("Load Validation Prediction Data...")
                     f_val_i = self.validation_indices[fold_index]
-                    tmp_pd = pd.read_hdf(load_p, "v_p_d_{}".format(fold_index))
-                    # Set up dataframe
-                    dtype_dict = self._find_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
-                    for c_n, (load_dt, final_dt) in dtype_dict.items():
-                        meta_dataset[c_n] = pd.Series(dtype=load_dt)
-                        meta_dataset.loc[f_val_i, c_n] = tmp_pd[c_n]
-                        meta_dataset[c_n] = meta_dataset[c_n].astype(final_dt)
-                    del tmp_pd
+                    f_cols = self.get_validation_predictions_columns(f_pred) \
+                             + self.get_validation_confidences_columns(f_pred)
+
+                    self._read_from_hdf_splits(meta_dataset, load_p, "v_p_d_{}".format(fold_index),
+                                               f_cols, f_val_i)
         else:
             raise ValueError("Unknown file format: {}".format(out_f))
 
         return meta_dataset
 
-    def _find_dtypes(self, col_types):
+    def _find_load_dtypes(self, col_types):
         res = {}
         for col_name, i_dtype in col_types:
             load_dtype = i_dtype
@@ -996,6 +975,24 @@ class MetaTask:
             res[col_name] = (load_dtype, final_dtype)
 
         return res
+
+    def _read_from_hdf_splits(self, df_to_store_in, in_path, hdf_key, cols, indices):
+        # This is equivalent to the order produced before.
+        chunk_indices = pd.read_hdf(in_path, hdf_key + "_md").tolist()
+        for i in chunk_indices:
+            tmp_pd = pd.read_hdf(in_path, hdf_key + f"_{i}")
+
+            # Handle Dtypes
+            dtype_dict = self._find_load_dtypes(zip(tmp_pd.columns, tmp_pd.dtypes))
+
+            # Handle insert into existing data
+            for c_n, (load_dt, final_dt) in dtype_dict.items():
+                df_to_store_in[c_n] = pd.Series(dtype=load_dt)
+                df_to_store_in.loc[indices, c_n] = tmp_pd[c_n]
+                df_to_store_in[c_n] = df_to_store_in[c_n].astype(final_dt)
+
+            # Clean Up
+            del tmp_pd
 
     def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
         # Get Shared Data
