@@ -76,11 +76,12 @@ class AbstractEnsemble(object):
         X, y = check_X_y(X, y)
         self.le_ = LabelEncoder().fit(y)
         self.classes_ = self.le_.classes_
+        y_ = self.le_.transform(y)
 
         if self.passthrough:
-            self.ensemble_passthrough_fit(X, self.base_models_predictions(X), y)
+            self.ensemble_passthrough_fit(X, self.base_models_predictions(X), y_)
         else:
-            self.ensemble_fit(self.base_models_predictions(X), y)
+            self.ensemble_fit(self.base_models_predictions(X), y_)
 
         return self
 
@@ -151,12 +152,14 @@ class AbstractEnsemble(object):
 
     def transform_ensemble_prediction(self, ensemble_output):
         if self.output_method == "predict":
-            return ensemble_output
+            y_ = ensemble_output
         else:
-            return self._confidences_to_predictions(ensemble_output)
+            y_ = self._confidences_to_predictions(ensemble_output)
+
+        return self.le_.inverse_transform(y_)
 
     def _confidences_to_predictions(self, confidences):
-        return self.classes_[np.argmax(confidences, axis=1)]
+        return np.argmax(confidences, axis=1)
 
     def oracle_predict(self, X, y):
         """Oracle Predict, predicting with knowing the ground truth. Only used by some methods for comparison
