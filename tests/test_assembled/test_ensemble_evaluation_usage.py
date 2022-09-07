@@ -13,8 +13,9 @@ from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 
 from results.data_utils import get_default_preprocessing
 from tests.assembled_metatask_util import build_metatask_with_validation_data_with_different_base_models_per_fold, \
-    build_metatask_with_validation_data_same_base_models_all_folds
+    build_metatask_with_validation_data_same_base_models_all_folds, delete_metatask_files
 from assembled.ensemble_evaluation import evaluate_ensemble_on_metatask
+from assembled.metatask import MetaTask
 from assembled.utils.data_mgmt import merge_fold_results
 from ensemble_techniques.util.metrics import make_metric
 from sklearn.metrics import roc_auc_score
@@ -313,6 +314,32 @@ def test_ensemble_evaluation_file_output_predict_proba():
     _verify_metadata(path_to_create_metadata, ["autosklearn.EnsembleSelection1", "autosklearn.EnsembleSelection2",
                                                "autosklearn.EnsembleSelection3"], mt.max_fold + 1)
     os.remove(path_to_create_metadata)
+
+
+def test_evaluation_with_delayed_load():
+    random_base_seed_models = 1
+    mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds(cross_val=False,
+                                                                                       expected_ind=[1, 2, 2, 3, 1, 3,
+                                                                                                     2, 1, 1, 3])
+    mt.file_format = "hdf"
+    mt.to_files("./")
+    del mt
+
+    mt = MetaTask()
+    mt.read_metatask_from_files("./", -1, delayed_evaluation_load=True)
+
+    technique_run_args = {"ensemble_size": 1, "metric": OpenMLAUROC,
+                          "random_state": np.random.RandomState(random_base_seed_models)}
+    fold_scores = evaluate_ensemble_on_metatask(mt, EnsembleSelection, technique_run_args,
+                                                "autosklearn.EnsembleSelection",
+                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                                use_validation_data_to_train_ensemble_techniques=True,
+                                                return_scores=OpenMLAUROC, verbose=True)
+
+    # With the setup as it is (ensemble_size=1), the evaluation will select one of the base models per fold and create
+    # the best selection.
+    np.testing.assert_array_equal(fold_scores, expected_perf)
+    delete_metatask_files("./", -1, file_format=mt.file_format)
 
 
 def _verify_metadata(path_to_metadata, technique_names, n_folds):

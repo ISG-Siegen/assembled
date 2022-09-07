@@ -70,6 +70,8 @@ class MetaTask:
         self.fold_postfix = "fold"
         self.fold_predictor_prefix = "FP"
         self.save_chunk_size = 1500
+        self._delayed_evaluation_load = False
+        self._file_load_path = None
 
         # -- Randomness (Experimental)
         self.random_int_seed_outer_folds = None
@@ -163,6 +165,10 @@ class MetaTask:
     @property
     def max_fold(self):
         return int(self.folds.max())
+
+    @property
+    def fold_indices(self):
+        return [int(f_i) for f_i in np.unique(self.folds)]
 
     # -- Properties related to meta-data
     @property
@@ -719,11 +725,6 @@ class MetaTask:
         self.folds = fold_indicator
 
     # - Metatask to files
-    def _get_file_format(self):
-        out_f = self.file_format
-
-        return out_f
-
     def to_files(self, output_dir: str = ""):
         """Store the metatask in two files. One .csv (or .hdf) and .json file
 
@@ -751,7 +752,7 @@ class MetaTask:
         logger.info("Finished Saving Metatask to Files.")
 
     def store_meta_dataset(self, output_dir):
-        out_f = self._get_file_format()
+        out_f = self.file_format
 
         # -- Store the predictions together with the dataset in one file
         if out_f == "csv":
@@ -833,7 +834,8 @@ class MetaTask:
         self.to_files(output_dir)
 
     # - Metatask from files
-    def read_metatask_from_files(self, input_dir: str, openml_task_id: int, read_wo_dataset: bool = False):
+    def read_metatask_from_files(self, input_dir: str, openml_task_id: int, read_wo_dataset: bool = False,
+                                 delayed_evaluation_load: bool = False):
         """ Build a metatask using data from files
 
         Parameters
@@ -845,11 +847,15 @@ class MetaTask:
         read_wo_dataset: bool, default=False
             If the function is used to only read the meta data and prediction data from the files.
             Needed to determine which sanity checks to run.
+        delayed_evaluation_load: bool, default=False
+            If true, the prediction data will be only loaded  once needed for the evaluation of a fold.
+            Afterwards, the prediction data is also removed again. In other words, it is loaded only for a fold.
+            That is, if fold_split is called.
+            Only supported for file formats in {"hdf"} for now.
         """
-        # -- Read data
-        file_path_json = os.path.join(input_dir, "metatask_{}.json".format(openml_task_id))
 
         # - Read meta data
+        file_path_json = os.path.join(input_dir, "metatask_{}.json".format(openml_task_id))
         with open(file_path_json) as json_file:
             meta_data = json.load(json_file)
 
@@ -866,27 +872,22 @@ class MetaTask:
         del meta_data
 
         # -- Get and parse dataset
-        meta_dataset = self.read_meta_dataset(input_dir, openml_task_id)
+        if delayed_evaluation_load and (self.file_format not in ["hdf"]):
+            raise NotImplementedError(
+                "Delayed evaluation load is not yet supported for file format {}".format(self.file_format))
+        self._delayed_evaluation_load = delayed_evaluation_load
 
-        self.dataset = meta_dataset[self.feature_names + [self.target_name]]
-        self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
-
-        if self.validation_predictions_columns or self.validation_confidences_columns:
-            self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
-                                                                       self.validation_confidences_columns]
-        else:
-            self.validation_predictions_and_confidences = pd.DataFrame()
-        del meta_dataset
+        self.read_meta_dataset(input_dir, openml_task_id)
 
         if not read_wo_dataset:
             self._dataset_sanity_checks()
 
     def read_meta_dataset(self, input_dir, openml_task_id):
-        out_f = self._get_file_format()
+        out_f = self.file_format
 
         # -- Read Dataset
         if out_f == "csv":
-            file_path_csv = os.path.join(input_dir, "metatask_{}.csv".format(openml_task_id))
+            load_path = os.path.join(input_dir, "metatask_{}.csv".format(openml_task_id))
 
             dtypes_to_read = {col_name: 'category' for col_name in self.cat_feature_names}
 
@@ -903,16 +904,16 @@ class MetaTask:
             # Init Dataset and Handle sparse dtypes
             if self.use_sparse_dtype:
                 # Read the non sparse part
-                meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read, usecols=self.dense_columns)
+                meta_dataset = pd.read_csv(load_path, dtype=dtypes_to_read, usecols=self.dense_columns)
 
                 # Go in chunks over the columns
                 for to_load_cols in self.yield_sparse_columns_chunks:
-                    tmp_md = pd.read_csv(file_path_csv, usecols=to_load_cols)[to_load_cols]
+                    tmp_md = pd.read_csv(load_path, usecols=to_load_cols)[to_load_cols]
                     dtype_per_col = self.get_load_dtypes_for_columns(to_load_cols)
                     meta_dataset[to_load_cols] = tmp_md.astype(dtype_per_col)
 
             else:
-                meta_dataset = pd.read_csv(file_path_csv, dtype=dtypes_to_read)
+                meta_dataset = pd.read_csv(load_path, dtype=dtypes_to_read)
 
         elif out_f == "feather":
             logger.info("Start Loading Feather File...")
@@ -931,33 +932,64 @@ class MetaTask:
 
         elif out_f == "hdf":
             logger.info("Start Loading from HDF Split Files...")
-            load_p = os.path.join(input_dir, "metatask_{}.hdf".format(openml_task_id))
+            load_p = os.path.join(input_dir, "metatask_{}.{}".format(openml_task_id, out_f))
 
             logger.info("Start Loading Dataset...")
             meta_dataset = pd.read_hdf(load_p, "dataset")
 
-            logger.info("Start Loading Prediction Data...")
-            # Iteration
-            fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
-            for fold_index in fold_indices:
-                logger.info("Load for Fold: {}".format(fold_index))
+            if not self._delayed_evaluation_load:
+                logger.info("Start Loading Prediction Data...")
+                # Iteration
+                for fold_index in self.fold_indices:
+                    meta_dataset = pd.concat(
+                        [meta_dataset, self._read_hdf_for_fold(fold_index, meta_dataset.index, load_p)],
+                        axis=1)
+            else:
+                self._file_load_path = load_p
 
-                logger.info("Load Test Prediction Data...")
-                meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "t_p_d_{}".format(fold_index))
-
-                if self.use_validation_data:
-                    logger.info("Load Validation Prediction Data...")
-                    meta_dataset = self._read_from_hdf_splits(meta_dataset, load_p, "v_p_d_{}".format(fold_index))
         else:
             raise ValueError("Unknown file format: {}".format(out_f))
 
-        return meta_dataset
+        # Always save dataset
+        self.dataset = meta_dataset[self.feature_names + [self.target_name]]
+        self._fill_prediction_data(meta_dataset)
 
-    def _read_from_hdf_splits(self, df_to_store_in, in_path, hdf_key):
+    def _fill_prediction_data(self, meta_dataset):
+        # Decided what prediction data to save
+        if not self._delayed_evaluation_load:
+            self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
+        else:
+            # Fallback
+            self.predictions_and_confidences = pd.DataFrame()
+
+        if (not self._delayed_evaluation_load) and (self.validation_predictions_columns
+                                                    or self.validation_confidences_columns):
+            self.validation_predictions_and_confidences = meta_dataset[self.validation_predictions_columns +
+                                                                       self.validation_confidences_columns]
+        else:
+            # Fallback
+            self.validation_predictions_and_confidences = pd.DataFrame()
+
+    def _read_hdf_for_fold(self, fold_index, meta_dataset_indices, path_to_hdf_file):
+        logger.info("Load for Fold: {}".format(fold_index))
+
+        logger.info("Load Test Prediction Data...")
+        pred_and_confs = self._read_from_hdf_splits(meta_dataset_indices, path_to_hdf_file,
+                                                    "t_p_d_{}".format(fold_index))
+
+        if self.use_validation_data:
+            logger.info("Load Validation Prediction Data...")
+            val_pred_and_confs = self._read_from_hdf_splits(meta_dataset_indices, path_to_hdf_file,
+                                                            "v_p_d_{}".format(fold_index))
+            return pd.concat([pred_and_confs, val_pred_and_confs], axis=1)
+
+        else:
+            return pred_and_confs
+
+    def _read_from_hdf_splits(self, meta_dataset_indices, in_path, hdf_key):
         chunk_indices = pd.read_hdf(in_path, hdf_key + "_md").tolist()
         sparse_cols = set(self.sparse_columns)
-        full_indices = df_to_store_in.index
-        tmp_df_store = pd.DataFrame(index=full_indices)
+        tmp_df_store = pd.DataFrame(index=meta_dataset_indices)
 
         for i in chunk_indices:
             # Load Data
@@ -983,12 +1015,21 @@ class MetaTask:
             # Handle insert into existing data
             for (load_dt, final_dt), col_names in all_cols_for_type.items():
                 tmp_df_store = pd.concat([tmp_df_store,
-                                          pd.DataFrame(index=full_indices, dtype=load_dt, columns=col_names)],
+                                          pd.DataFrame(index=meta_dataset_indices, dtype=load_dt, columns=col_names)],
                                          axis=1)
                 tmp_df_store.loc[indices, col_names] = tmp_pd[col_names]
                 tmp_df_store = tmp_df_store.astype({c: final_dt for c in col_names})
 
-        return pd.concat([df_to_store_in, tmp_df_store], axis=1)
+        return tmp_df_store
+
+    def read_prediction_data_for_fold(self, fold_index):
+        """ Only Read the Prediction data (test and validation) for a specific fold"""
+        if self.file_format == "hdf":
+            pred_data = self._read_hdf_for_fold(fold_index, self.dataset.index, self._file_load_path)
+        else:
+            raise ValueError("Unsupported File Format for Fold Read.")
+
+        return pred_data
 
     def from_sharable_prediction_data(self, input_dir: str, openml_task_id: int, dataset: pd.DataFrame):
         # Get Shared Data
@@ -1178,11 +1219,21 @@ class MetaTask:
 
         return train_indices, test_indices
 
-    def fold_split(self, return_fold_index=False):
+    def fold_split(self, return_fold_index=False, folds_to_run=None):
         # Return a fold's split copy of metadataset
-        yield_copy = self.meta_dataset.copy()
+
+        # Only yield full copy if needed
+        if not self._delayed_evaluation_load:
+            yield_copy = self.meta_dataset.copy()
 
         for i in range(self.max_fold + 1):
+            # Skip not needed folds
+            if (folds_to_run is not None) and (i not in folds_to_run):
+                continue
+
+            if self._delayed_evaluation_load:
+                yield_copy = pd.concat([self.dataset, self.read_prediction_data_for_fold(i)], axis=1)
+
             train_indices, test_indices = self.get_indices_for_fold(i)
 
             if return_fold_index:
@@ -1291,11 +1342,7 @@ class MetaTask:
             Confidences of each base model on the fold's test data
         """
 
-        for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True):
-            # -- Check if Fold is wanted, if not skip
-            if (folds_to_run is not None) and (idx not in folds_to_run):
-                continue
-
+        for idx, train_metadata, test_metadata in self.fold_split(return_fold_index=True, folds_to_run=folds_to_run):
             X_train, y_train, _, _, val_base_predictions, val_base_confidences = self.split_meta_dataset(train_metadata,
                                                                                                          fold_idx=idx)
             X_test, y_test, test_base_predictions, test_base_confidences, _, _ = self.split_meta_dataset(test_metadata,
