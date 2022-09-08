@@ -289,7 +289,7 @@ class VotingClassifier(ClassifierMixin, _BaseVoting):
         self.verbose = verbose
         self.prefitted = prefitted
         if self.prefitted:
-            self.base_model_le_ = estimators[0].le_
+            self.base_model_le_ = estimators[0][-1].le_
 
     def fit(self, X, y, sample_weight=None):
         """Fit the estimators.
