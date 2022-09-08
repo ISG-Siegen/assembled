@@ -7,6 +7,10 @@ from sklearn.utils.validation import check_is_fitted, check_array, _check_y
 from sklearn.preprocessing import LabelEncoder
 from sklearn.calibration import CalibratedClassifierCV
 
+from assembled.utils.logger import get_logger
+
+logger = get_logger(__file__)
+
 
 class FakedClassifier(BaseEstimator, ClassifierMixin):
     """A fake classifier that simulates a real classifier from the prediction data of the real classifier.
@@ -285,17 +289,21 @@ def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, va
     # !WARNING!: Long text to explain to myself why the following works
     # Theoretically, we would need to build two separate base model sets for validation and test, because the base
     #   models might have been fitted differently for the validation predictions and test predictions.
-    #   (unless we take the validation data from the test predictions like in the no-validation-data case)
+    #   That is, in the case of a refit.
     # However, in our "lookup-table-like" fake base model, the fit method validates that the number of features
-    #   is correct. Which it must be for both cases in our setup. Otherwise it would be a bug.
-    #   Moreover, in classification it uses np.unique(y) to find the classes used to convert the predictions. This is,
-    #   however, always the same for val_y and test_y because we are always doing a stratified splits and a validation
-    #   split with only 1 class in it would be ill-defined. Hence, we can assume that np.unique(y) is identical for
-    #   val_fit and test_fit.
-    # In short, in our simulation the difference between data used to fit the base model for validation or test (outer
+    #   is correct. Which it must be for both cases in our setup. Otherwise, it would be a bug.
+    # Moreover, in classification it uses np.unique(y) to find the classes used to convert the predictions. This is,
+    #   however, almost always the same for val_y and test_y because we are always doing a stratified splits.
+
+    # TODO: fix this problem below
+    #   If refit + the validation data, with enough classes, it can happen that test_base_model_train_y has a different
+    #   number of classes than val_base_model_train_y, then a problem would exist. This is not yet supported / fixed.
+
+    # In any other case, the difference between data used to fit the base model for validation or test (outer
     #   evaluation) can be ignored. The base model can be (pre-)fitted on either validation or test data.
-    # It is only important that known_X contains all instances and known_predictions/confidences all output values
-    #   that would be needed during prediction for validation (ensemble fit) or outer evaluation (ensemble predict)
+    # It is only important that known_X contains all instances, known_predictions/confidences all output values
+    #   that would be needed during prediction for validation (ensemble fit) or outer evaluation (ensemble predict),
+    #   and the label encoder all possible classes.
 
     # -- Set values to one of validation or training data here
     classes_ = np.unique(test_base_model_train_y)
@@ -303,10 +311,12 @@ def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, va
     y_train = test_base_model_train_y
 
     # - Sanity Check to make sure we are not in an ill-defined split and everything described as above holds
-    #   (is technically a large overhead but my sanity is more important than the code's efficiency)
     if list(classes_) != list(np.unique(val_base_model_train_y)):
-        raise ValueError("Classes found in Validation and Test data used to fit the base model are not identical. "
-                         + "Something went wrong and I can not tell you where.")
+        val_classes = np.unique(val_base_model_train_y)
+        logger.info("Classes found in Validation and Test data used to fit the base model are not identical."
+                    + "\nClasses in test data: {}".format(list(classes_))
+                    + "\nClasses in val data: {}".format(list(val_classes)))
+        raise NotImplementedError("This can only occur when refit is true. This is not yet supported.")
 
     # -- Build fake base models
     faked_base_models = []
