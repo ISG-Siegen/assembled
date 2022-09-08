@@ -1,4 +1,4 @@
-# Code Taken from here with adaptions to be usable:
+# Code Taken from here with (heavy) adaptions to be usable:
 # https://github.com/automl/auto-sklearn/blob/master/autosklearn/ensembles/abstract_ensemble.py
 
 from abc import ABCMeta, abstractmethod
@@ -11,17 +11,22 @@ from sklearn.preprocessing import LabelEncoder
 class AbstractEnsemble(object):
     """Abstract class to guarantee that we can use autosklearn's ensemble techniques and custom techniques.
 
+    During fit (for classification), we transform all labels into integers. This also happens for the predictions of
+    base models.
+
     Parameters
     ----------
     base_models: List[Callable], List[sklearn estimators]
         The pool of fitted base models.
     predict_method: {"predict", "predict_proba"}, default="predict"
-        Which predict method should be passed to the ensemble technique's fit.
+        Determine the predict method that is used to obtain the output of base models that is passed to an ensemble's
+        fit method.
     output_method: {"predict", "predict_proba"}, default="predict"
         Which output the ensemble will return.
     predict_method_ensemble_predict: {"predict", "predict_proba", None}, default=None
-        Which predict method should be passed to the ensemble technique's predict. If None, the same method passed
-        to ensemble fit is passed to ensemble predict.
+        Determine the predict method that is used to obtain the output of base models that is passed to an ensemble's
+        predict method.
+        If None, the same method passed to ensemble fit is passed to ensemble predict.
     passthrough : bool, default=False
         When False, only the predictions or confidences of the base models will be passed to the ensemble fit and
         predict. When True, the original training data is passed additionally. The ensemble technique must support this!
@@ -69,7 +74,8 @@ class AbstractEnsemble(object):
             raise ValueError("Unknown predict method: {}".format(self.predict_method))
         if self.output_method not in ["predict", "predict_proba"]:
             raise ValueError("Unknown ensemble output method: {}".format(self.output_method))
-            # Test if ensemble technique supports passthrough
+
+        # Test if ensemble technique supports passthrough
         if self.passthrough and (not (hasattr(self, "supports_passthrough") and self.supports_passthrough is True)):
             raise ValueError("Passthrough is enabled but the ensemble technique does not support passthrough!")
 
@@ -97,7 +103,11 @@ class AbstractEnsemble(object):
         y : ndarray, shape (n_samples,)
             Vector containing the class labels for each sample.
         """
-        check_is_fitted(self, ["le_", "classes_"])
+        check_is_fitted_for = []
+        if hasattr(self, "fitted_attributes"):
+            check_is_fitted_for = self.fitted_attributes
+
+        check_is_fitted(self, ["le_", "classes_"] + check_is_fitted_for)
         X = check_array(X)
 
         if self.passthrough:
@@ -139,14 +149,14 @@ class AbstractEnsemble(object):
 
     def base_models_predictions(self, X):
         if self.predict_method == "predict":
-            return [bm.predict(X) for bm in self.base_models]
+            return [self.le_.transform(bm.predict(X)) for bm in self.base_models]
         else:
             return [bm.predict_proba(X) for bm in self.base_models]
 
     def base_models_predictions_for_ensemble_predict(self, X):
         # TODO, maybe merge with method above. IDK yet
         if self.predict_method_ensemble_predict == "predict":
-            return [bm.predict(X) for bm in self.base_models]
+            return [self.le_.transform(bm.predict(X)) for bm in self.base_models]
         else:
             return [bm.predict_proba(X) for bm in self.base_models]
 
@@ -178,8 +188,9 @@ class AbstractEnsemble(object):
         """
         X, y = check_X_y(X, y)
         self.classes_ = np.unique(y)
+        y_ = self.le_.transform(y)
 
-        ensemble_output = self.ensemble_oracle_predict(self.base_models_predictions_for_ensemble_predict(X), y)
+        ensemble_output = self.ensemble_oracle_predict(self.base_models_predictions_for_ensemble_predict(X), y_)
 
         return self.transform_ensemble_prediction(ensemble_output)
 
