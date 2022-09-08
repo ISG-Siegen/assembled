@@ -50,6 +50,9 @@ class AbstractEnsemble(object):
         self.output_method = output_method
         self.passthrough = passthrough
 
+        # Get the classes seen by the base model on the data they have been trained on.
+        self.base_model_le_ = self.base_models[0].le_
+
         if predict_method_ensemble_predict is None:
             self.predict_method_ensemble_predict = predict_method
         else:
@@ -82,6 +85,15 @@ class AbstractEnsemble(object):
         X, y = check_X_y(X, y)
         self.le_ = LabelEncoder().fit(y)
         self.classes_ = self.le_.classes_
+
+        # Check if self.classes_ differs
+        if len(self.classes_) != len(self.base_model_le_.classes_):
+            print("The number of seen classes differs for the base models and the ensemble.",
+                  "We fix this by using the base model's label encoder.")
+            # TO fix it, we use the label encoder of the base models
+            self.le_ = self.base_model_le_
+            self.classes_ = self.base_model_le_.classes_
+
         y_ = self.le_.transform(y)
 
         if self.passthrough:

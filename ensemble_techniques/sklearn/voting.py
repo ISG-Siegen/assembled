@@ -288,6 +288,8 @@ class VotingClassifier(ClassifierMixin, _BaseVoting):
         self.flatten_transform = flatten_transform
         self.verbose = verbose
         self.prefitted = prefitted
+        if self.prefitted:
+            self.base_model_le_ = estimators[0].le_
 
     def fit(self, X, y, sample_weight=None):
         """Fit the estimators.
@@ -326,6 +328,15 @@ class VotingClassifier(ClassifierMixin, _BaseVoting):
 
         self.le_ = LabelEncoder().fit(y)
         self.classes_ = self.le_.classes_
+
+        # Check if self.classes_ differs between (fitted) base models and ensemble.
+        if self.prefitted and (len(self.classes_) != len(self.base_model_le_.classes_)):
+            print("The number of seen classes differs for the base models and the ensemble.",
+                  "We fix this by using the base model's label encoder.")
+            # TO fix it, we use the label encoder of the base models
+            self.le_ = self.base_model_le_
+            self.classes_ = self.base_model_le_.classes_
+
         transformed_y = self.le_.transform(y)
 
         return super().fit(X, transformed_y, sample_weight)

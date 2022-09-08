@@ -412,6 +412,20 @@ def _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
     if verbose:
         logger.info("Build Fake Base Models")
 
+    if len(list(np.unique(test_base_model_train_y))) != len(list(np.unique(ensemble_train_y))):
+        bm_cls = list(np.unique(test_base_model_train_y))
+        ens_cls = list(np.unique(ensemble_train_y))
+        logger.info("The data used to fit the base models has a different amount of classes than the data "
+                    + "that is to be used for fitting the ensemble. "
+                    + "BM Classes: {} ".format(bm_cls)
+                    + "Ensemble Classes: {} ".format(ens_cls))
+
+        if len(ens_cls) > len(bm_cls):
+            raise ValueError("The ensemble would have more classes than the base models. "
+                             + "We can not fix this as base models are already trained / Have not implemented a fix.")
+
+        logger.info("The ensemble method need to handle this edge case if needed.")
+
     # -- Build ensemble technique
     base_models = _initialize_fake_models(test_base_model_train_X, test_base_model_train_y,
                                           val_base_model_train_X, val_base_model_train_y, fake_base_model_known_X,
