@@ -135,62 +135,14 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
     fold_scores = []
     for fold_idx, X_train, X_test, y_train, y_test, val_base_predictions, test_base_predictions, \
         val_base_confidences, test_base_confidences in metatask.yield_evaluation_data(folds_to_run):
-
         if verbose:
             logger.info("Start Evaluation for Fold {}/{}...".format(fold_idx + 1, metatask.max_fold + 1))
 
-        # -- Employ Preprocessing and input validation
-        train_X_indices = X_train.index.to_numpy()
-        test_X_indices = X_test.index.tolist()
-        X_train, X_test, y_train, y_test = check_fold_data_for_ensemble(X_train, X_test, y_train, y_test,
-                                                                        preprocessor)
-
-        # -- Get Data for Fake Base Model and Evaluation
-
-        # - Validation Data
-        if verbose:
-            logger.info("Get Validation Data")
-
-        # -- List of Output from function below
-        # Ensemble train X,y: ensemble_train_X, ensemble_train_y
-        # Ensemble test X,y: ensemble_test_X, ensemble_test_y
-        # All instances on which the BMs have data: fake_base_model_known_X
-        # All Predictions for all known instances: fake_base_model_known_predictions
-        # All confidences for all known instances: fake_base_model_known_confidences
-        # Base model training X,y: val_base_model_train_X, val_base_model_train_y (data trained on for validation pred)
-        # Base model training X,y: test_base_model_train_X, test_base_model_train_y (data trained on for test pred)
-        ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
-        fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
-        val_base_model_train_y, test_base_model_train_X, test_base_model_train_y, \
-        test_indices = _get_data_for_ensemble(metatask, val_data, X_train, X_test, y_train, y_test,
-                                              val_base_predictions, val_base_confidences,
-                                              test_base_predictions, test_base_confidences,
-                                              m_frac, m_rand, train_X_indices,
-                                              test_X_indices, fold_idx, refit)
-
-        # -- Build Fake Base Models
-        if verbose:
-            logger.info("Build Fake Base Models")
-        base_models = _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
-                                              val_base_model_train_X, val_base_model_train_y,
-                                              ensemble_train_X, ensemble_train_y,
-                                              fake_base_model_known_X,
-                                              fake_base_model_known_predictions,
-                                              fake_base_model_known_confidences,
-                                              pre_fit_base_models, base_models_with_names,
-                                              label_encoder, probability_calibration, metatask.to_confidence_name)
-        # -- Run Ensemble for Fold
-        if verbose:
-            logger.info("Run Ensemble on Fold")
-
-        func_args = (base_models, technique, technique_args, ensemble_train_X, ensemble_test_X, ensemble_train_y,
-                     ensemble_test_y, oracle, predict_method)
-        func = _run_ensemble_on_data
-
-        if isolate_ensemble_execution:
-            y_pred_ensemble_model, run_meta_data = isolate_function(func, *func_args)
-        else:
-            y_pred_ensemble_model, run_meta_data = func(*func_args)
+        ensemble_test_y, y_pred_ensemble_model, run_meta_data, test_indices = \
+            _run(fold_idx, metatask, X_train, X_test, y_train, y_test, val_base_predictions, val_base_confidences,
+                 test_base_predictions, test_base_confidences, val_data, preprocessor, m_frac, m_rand, refit,
+                 pre_fit_base_models, base_models_with_names, label_encoder, probability_calibration,
+                 technique, technique_args, oracle, predict_method, isolate_ensemble_execution, verbose)
 
         # -- Add evaluation settings metadata
         if save_evaluation_metadata:
@@ -221,6 +173,81 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
     # -- Return Score
     if return_scores is not None:
         return fold_scores
+
+
+# -- Overall code
+def _run(fold_idx, metatask, X_train, X_test, y_train, y_test, val_base_predictions, val_base_confidences,
+         test_base_predictions, test_base_confidences, val_data, preprocessor, m_frac, m_rand, refit,
+         pre_fit_base_models, base_models_with_names, label_encoder, probability_calibration,
+         technique, technique_args, oracle, predict_method, isolate_ensemble_execution, verbose):
+    """Wrappers like _run() or _get_evaluation_input are used/needed to avoid memory leakage."""
+    # Get everything needed for fit and predict with the ensemble
+    ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, test_indices, base_models = \
+        _get_evaluation_input(fold_idx, metatask, X_train, X_test, y_train, y_test, val_base_predictions,
+                              val_base_confidences, test_base_predictions, test_base_confidences, val_data,
+                              preprocessor, m_frac, m_rand, refit, pre_fit_base_models, base_models_with_names,
+                              label_encoder, probability_calibration, verbose)
+
+    # -- Run Ensemble for Fold
+    if verbose:
+        logger.info("Run Ensemble on Fold")
+
+    func_args = (base_models, technique, technique_args, ensemble_train_X, ensemble_test_X, ensemble_train_y,
+                 ensemble_test_y, oracle, predict_method)
+    func = _run_ensemble_on_data
+
+    if isolate_ensemble_execution:
+        y_pred_ensemble_model, run_meta_data = isolate_function(func, *func_args)
+    else:
+        y_pred_ensemble_model, run_meta_data = func(*func_args)
+
+    return ensemble_test_y, y_pred_ensemble_model, run_meta_data, test_indices
+
+
+def _get_evaluation_input(fold_idx, metatask, X_train, X_test, y_train, y_test, val_base_predictions,
+                          val_base_confidences, test_base_predictions, test_base_confidences, val_data, preprocessor,
+                          m_frac, m_rand, refit, pre_fit_base_models, base_models_with_names, label_encoder,
+                          probability_calibration, verbose):
+    # -- Employ Preprocessing and input validation
+    train_X_indices = X_train.index.to_numpy()
+    test_X_indices = X_test.index.tolist()
+    X_train, X_test, y_train, y_test = check_fold_data_for_ensemble(X_train, X_test, y_train, y_test,
+                                                                    preprocessor)
+
+    # - Validation Data
+    if verbose:
+        logger.info("Get Validation Data")
+
+    # -- List of Output from function below
+    # Ensemble train X,y: ensemble_train_X, ensemble_train_y
+    # Ensemble test X,y: ensemble_test_X, ensemble_test_y
+    # All instances on which the BMs have data: fake_base_model_known_X
+    # All Predictions for all known instances: fake_base_model_known_predictions
+    # All confidences for all known instances: fake_base_model_known_confidences
+    # Base model training X,y: val_base_model_train_X, val_base_model_train_y (data trained on for validation pred)
+    # Base model training X,y: test_base_model_train_X, test_base_model_train_y (data trained on for test pred)
+    ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
+    fake_base_model_known_predictions, fake_base_model_known_confidences, val_base_model_train_X, \
+    val_base_model_train_y, test_base_model_train_X, test_base_model_train_y, \
+    test_indices = _get_data_for_ensemble(metatask, val_data, X_train, X_test, y_train, y_test,
+                                          val_base_predictions, val_base_confidences,
+                                          test_base_predictions, test_base_confidences,
+                                          m_frac, m_rand, train_X_indices,
+                                          test_X_indices, fold_idx, refit)
+
+    # -- Build Fake Base Models
+    if verbose:
+        logger.info("Build Fake Base Models")
+    base_models = _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
+                                          val_base_model_train_X, val_base_model_train_y,
+                                          ensemble_train_X, ensemble_train_y,
+                                          fake_base_model_known_X,
+                                          fake_base_model_known_predictions,
+                                          fake_base_model_known_confidences,
+                                          pre_fit_base_models, base_models_with_names,
+                                          label_encoder, probability_calibration, metatask.to_confidence_name)
+
+    return ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, test_indices, base_models
 
 
 # -- Data for Ensemble Getters
@@ -337,7 +364,6 @@ def _get_data_for_ensemble_with_validation(metatask, X_train, X_test, y_train, y
     # -- Get known/oracle data for fake base model
     # Therefore, combine validation and test instances
     fake_base_model_known_X = np.vstack((ensemble_train_X, ensemble_test_X))
-
 
     # Return
     return ensemble_train_X, ensemble_test_X, ensemble_train_y, ensemble_test_y, fake_base_model_known_X, \
