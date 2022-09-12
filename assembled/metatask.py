@@ -531,26 +531,26 @@ class MetaTask:
 
         # -- Add normal prediction data
         if not fold_predictor:
-            self.predictions_and_confidences = self._get_prediction_data(predictions, confidences, predictor_name,
-                                                                         class_labels_to_use, conf_col_names,
-                                                                         self.predictions_and_confidences.copy())
+            self.predictions_and_confidences = pd.concat(
+                [self.predictions_and_confidences,
+                 self._get_prediction_data(predictions, confidences, predictor_name, class_labels_to_use,
+                                           conf_col_names, self.predictions_and_confidences.index)], axis=1)
         else:
             other_indices, predicted_on_indices = self.get_indices_for_fold(fold_predictor_idx, return_indices=True)
 
-            self.predictions_and_confidences = self._get_prediction_data(predictions, confidences, predictor_name,
-                                                                         class_labels_to_use, conf_col_names,
-                                                                         self.predictions_and_confidences.copy(),
-                                                                         fold_data=True,
-                                                                         fold_data_arguments={
-                                                                             "non_used_indices": other_indices,
-                                                                             "used_indices": predicted_on_indices
-                                                                         })
+            self.predictions_and_confidences = pd.concat(
+                [self.predictions_and_confidences,
+                 self._get_prediction_data(predictions, confidences, predictor_name, class_labels_to_use,
+                                           conf_col_names, self.predictions_and_confidences.index,
+                                           fold_data=True, fold_data_arguments={
+                         "non_used_indices": other_indices,
+                         "used_indices": predicted_on_indices
+                     })], axis=1)
 
         # -- Add validation data
         if validation_data is not None:
             # (Re-)Mark validation data usage
             self.use_validation_data = True
-            tmp_val_data = self.validation_predictions_and_confidences.copy()
 
             for fold_idx, val_preds, val_confs, val_indices in validation_data:
                 # -- Fold preliminaries
@@ -580,22 +580,23 @@ class MetaTask:
                 non_val_indices = np.append(non_val_indices, additional_non_val_indices)
 
                 # Get fold prediction data
-                tmp_val_data = self._get_prediction_data(val_preds, val_confs, save_name,
-                                                         class_labels_to_use, val_conf_col_names,
-                                                         tmp_val_data,
-                                                         fold_data=True,
-                                                         fold_data_arguments={
-                                                             "non_used_indices": non_val_indices,
-                                                             "used_indices": val_indices
-                                                         })
+                self.validation_predictions_and_confidences = pd.concat(
+                    [self.validation_predictions_and_confidences,
+                     self._get_prediction_data(val_preds, val_confs, save_name, class_labels_to_use, val_conf_col_names,
+                                               self.validation_predictions_and_confidences.index,
+                                               fold_data=True, fold_data_arguments={
+                             "non_used_indices": non_val_indices,
+                             "used_indices": val_indices
+                         })],
+                    axis=1)
 
             # -- Post-processing of fold data
             # Re-order validation data to have identical order at all times
-            self.validation_predictions_and_confidences = tmp_val_data[self.validation_predictions_columns +
-                                                                       self.validation_confidences_columns]
+            self.validation_predictions_and_confidences = self.validation_predictions_and_confidences[
+                self.validation_predictions_columns + self.validation_confidences_columns]
 
     def _get_prediction_data(self, predictions, confidences, predictor_name, class_labels_to_use, conf_col_names,
-                             current_prediction_data, fold_data: bool = False,
+                             current_prediction_data_index, fold_data: bool = False,
                              fold_data_arguments: dict = None):
         """Checks are formats prediction data where needed. Return contacted prediction data.
 
@@ -662,12 +663,11 @@ class MetaTask:
             pred_data = pred_data.astype(dtype_per_col)
 
         # -- Concat and Verify integrity of index
-        tmp_data = pd.concat([current_prediction_data, pred_data], axis=1).reset_index()
-        if sum(tmp_data.index != tmp_data["index"]) != 0:
+        pred_data = pred_data.reset_index()
+        if (current_prediction_data_index.size != 0) and sum(current_prediction_data_index != pred_data["index"]) != 0:
             raise ValueError("Something went wrong with the index of the predictions data!")
-        tmp_predictions_and_confidences = tmp_data.drop(columns=["index"])
 
-        return tmp_predictions_and_confidences
+        return pred_data.drop(columns=["index"])
 
     # - Loading Side Information
     def read_selection_constraints(self, selection_constraints):
