@@ -500,4 +500,7 @@ def _run_ensemble_on_data(base_models, technique, technique_args, ensemble_train
 
     run_meta_data = {"fit_time": fit_time, "predict_time": predict_time}
 
+    if hasattr(ensemble_model, "_to_save_metadata"):
+        run_meta_data.update(ensemble_model._to_save_metadata)
+
     return y_pred_ensemble_model, run_meta_data

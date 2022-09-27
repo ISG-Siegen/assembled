@@ -185,3 +185,11 @@ class EnsembleSelection(AbstractEnsemble):
                              " and ensemble weights do not match!")
         del tmp_predictions
         return average
+
+    @property
+    def _to_save_metadata(self):
+        return dict(
+            weights=self.weights_.tolist(),
+            ensemble_size=int(sum(self.weights_ > 0)),
+            train_score=float(self.train_score_),
+            trajectory=[float(v) for v in self.trajectory_])
