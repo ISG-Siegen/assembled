@@ -1,6 +1,6 @@
 autorank~=1.1.2
 deslib~=0.3.5
-joblib~=1.1.0
+joblib>=1.2.0
 matplotlib~=3.5.1
 numpy~=1.22.3
 openml~=0.12.2
