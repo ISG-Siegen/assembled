@@ -451,7 +451,10 @@ def _run_ensemble_wrapper(base_models, technique, technique_args, ensemble_train
     func = _run_ensemble_on_data
 
     if isolate_ensemble_execution:
-        y_pred_ensemble_model, run_meta_data = isolate_function(func, *func_args)
+        # This also updates the technique args to guarantee that arguments that need to be re-used (like random state)
+        # are set properly.
+        (y_pred_ensemble_model, run_meta_data), iso_technique_args = isolate_function(func, *func_args)
+        technique_args.update(iso_technique_args)
     else:
         y_pred_ensemble_model, run_meta_data = func(*func_args)
 

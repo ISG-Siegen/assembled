@@ -42,6 +42,77 @@ def test_evaluation_with_validation_data():
     np.testing.assert_array_equal(fold_scores, expected_perf)
 
 
+def test_evaluation_random_state():
+    from ensemble_techniques.wrapper.abstract_ensemble import AbstractEnsemble
+    # A random selection ensemble
+    class RandomSelection(AbstractEnsemble):
+        """A Random selection wrapper"""
+
+        def __init__(self, base_models, random_state) -> None:
+
+            super().__init__(base_models, "predict_proba", "predict_proba")
+            self.random_state = random_state
+
+        def ensemble_fit(self, predictions, labels):
+            self.weights_ = np.zeros(len(predictions))
+            self.weights_[self.random_state.choice(list(range(len(predictions))))] = 1
+
+            return self
+
+        def ensemble_predict(self, predictions) -> np.ndarray:
+
+            average = np.zeros_like(predictions[0], dtype=np.float64)
+            tmp_predictions = np.empty_like(predictions[0], dtype=np.float64)
+
+            # if predictions.shape[0] == len(self.weights_),
+            # predictions include those of zero-weight models.
+            if len(predictions) == len(self.weights_):
+                for pred, weight in zip(predictions, self.weights_):
+                    np.multiply(pred, weight, out=tmp_predictions)
+                    np.add(average, tmp_predictions, out=average)
+
+            # if prediction model.shape[0] == len(non_null_weights),
+            # predictions do not include those of zero-weight models.
+            elif len(predictions) == np.count_nonzero(self.weights_):
+                non_null_weights = [w for w in self.weights_ if w > 0]
+                for pred, weight in zip(predictions, non_null_weights):
+                    np.multiply(pred, weight, out=tmp_predictions)
+                    np.add(average, tmp_predictions, out=average)
+
+            # If none of the above applies, then something must have gone wrong.
+            else:
+                raise ValueError("The dimensions of ensemble predictions"
+                                 " and ensemble weights do not match!")
+            del tmp_predictions
+            return average
+
+    # Random selected scores
+    mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds(
+        rng_perf=np.random.RandomState(1))
+
+    # -- Basic Usage
+    fold_scores = evaluate_ensemble_on_metatask(mt, RandomSelection, {"random_state": np.random.RandomState(1)},
+                                                "autosklearn.EnsembleSelection",
+                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                                use_validation_data_to_train_ensemble_techniques=True,
+                                                return_scores=OpenMLAUROC)
+    np.testing.assert_array_equal(fold_scores, expected_perf)
+
+    # -- Isolation usage
+    import platform
+    if platform.system() == "Windows":
+        raise ValueError("You require linux to run this test!")
+    fold_scores = evaluate_ensemble_on_metatask(mt, RandomSelection, {"random_state": np.random.RandomState(1)},
+                                                "autosklearn.EnsembleSelection",
+                                                pre_fit_base_models=True, preprocessor=get_default_preprocessing(),
+                                                use_validation_data_to_train_ensemble_techniques=True,
+                                                return_scores=OpenMLAUROC, isolate_ensemble_execution=True)
+
+    # With the setup as it is (ensemble_size=1), the evaluation will select one of the base models per fold and create
+    # the best selection.
+    np.testing.assert_array_equal(fold_scores, expected_perf)
+
+
 def test_evaluation_without_preprocessor():
     random_base_seed_models = 1
     mt, expected_perf = build_metatask_with_validation_data_same_base_models_all_folds()
