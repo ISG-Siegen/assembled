@@ -50,6 +50,8 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         Time the real model took to evaluate/infer the confidences
     label_encoder : bool, default=false
         Whether we need to apply encoding to the predictions.
+    model_metadata: Optional[dict], default=None
+        Additional metadata for the model.
 
     Attributes
     ----------
@@ -64,11 +66,12 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, oracle_X=None, predictions_=None, confidences_=None, oracle_index_=None,
                  simulate_n_features_in_=None,
                  predict_time_: float = 0, predict_proba_time_: float = 0, fit_time_: float = 0,
-                 simulate_time: bool = False, label_encoder=False):
+                 simulate_time: bool = False, label_encoder=False, model_metadata=None):
         self.simulate_time = simulate_time
         self.label_encoder = label_encoder
 
         self.fit_time_ = fit_time_
+        self.model_metadata = model_metadata
 
         # --- Init Parameter Validation
         if (oracle_X is not None) or (simulate_n_features_in_ is None):
@@ -285,7 +288,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 # -- Additional Functions for FakedClassifiers Usage
 def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, val_base_model_train_X,
                             val_base_model_train_y, known_X, known_predictions, known_confidences, pre_fit_base_models,
-                            base_models_with_names, label_encoder, to_confidence_name):
+                            base_models_with_names, label_encoder, to_confidence_name, predictor_descriptions):
     # !WARNING!: Long text to explain to myself why the following works
     # Theoretically, we would need to build two separate base model sets for validation and test, because the base
     #   models might have been fitted differently for the validation predictions and test predictions.
@@ -320,6 +323,7 @@ def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, va
 
     # -- Build fake base models
     faked_base_models = []
+    add_metadata = predictor_descriptions is not None
 
     for model_name in list(known_predictions):
         # Sort Predictions to the default predict_proba style and get predictions + confidences for a specific model
@@ -327,7 +331,8 @@ def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, va
         model_predictions = known_predictions[model_name]
 
         # Fit the FakedClassifier
-        fc = FakedClassifier(known_X, model_predictions, model_confidences, label_encoder=label_encoder)
+        fc = FakedClassifier(known_X, model_predictions, model_confidences, label_encoder=label_encoder,
+                             model_metadata=predictor_descriptions[model_name] if add_metadata else None)
 
         # -- Set fitted or not (sklearn vs. deslib)
         if pre_fit_base_models:

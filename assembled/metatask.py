@@ -1355,7 +1355,8 @@ class MetaTask:
     def _exp_yield_evaluation_data_across_folds(self, meta_train_test_split_fraction,
                                                 meta_train_test_split_random_state,
                                                 pre_fit_base_models, base_models_with_names, label_encoder,
-                                                preprocessor, include_test_data=False):
+                                                preprocessor, include_test_data=False,
+                                                store_metadata_in_fake_base_model=False):
         from assembled.compatibility.faked_classifier import _initialize_fake_models
 
         # FIXME, extend to validation data usage?
@@ -1374,7 +1375,8 @@ class MetaTask:
 
             base_models = _initialize_fake_models(X_train, y_train, X_train, y_train, X_test, test_base_predictions,
                                                   test_base_confidences, pre_fit_base_models, base_models_with_names,
-                                                  label_encoder, self.to_confidence_name)
+                                                  label_encoder, self.to_confidence_name,
+                                                  self.predictor_descriptions if store_metadata_in_fake_base_model else None)
 
             if include_test_data:
                 assert_meta_train_pred, assert_meta_test_pred, assert_meta_train_conf, \

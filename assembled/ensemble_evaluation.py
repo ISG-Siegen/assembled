@@ -24,7 +24,8 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
                                   store_results: str = "sequential", save_evaluation_metadata: bool = False,
                                   oracle=False, probability_calibration="no", predict_method: str = "predict",
                                   return_scores: Optional[Callable] = None, verbose: bool = False,
-                                  isolate_ensemble_execution: bool = False, refit: bool = False):
+                                  isolate_ensemble_execution: bool = False, refit: bool = False,
+                                  store_metadata_in_fake_base_model: bool = False):
     """Run an ensemble technique on all folds and return the results
 
     The current implementation builds fake base models by default such that we can evaluate methods this way.
@@ -104,6 +105,10 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         !WARNING! Only works on Linux currently; FIXME: Either a bug or not possible on Windows, dont know.
     refit: bool, default=False
         Set to true if the base models have been re-fitted before predicting for test data.
+    store_metadata_in_fake_base_model: bool, default=False
+        If true, we store metadata about a base model in the FakedBaseModel that is initialized.
+        To do so, the metatasks must store metadata about a base model in a dictionary called "predictor_descriptions"
+         where the name of a predictor maps to the desired metadata.
     """
     # TODO -- Parameter Preprocessing / Checking
     #   Add safety check for file path here or something
@@ -126,6 +131,10 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
         raise ValueError("predict_method parameter has a wrong value. Allowed are: {}. Got: {}".format(
             ["predict", "predict_proba"], predict_method))
 
+    if store_metadata_in_fake_base_model and (not hasattr(metatask, "predictor_descriptions")):
+        raise ValueError("We require prediction descriptions stored in the metatask to store metadata in the",
+                         "fake base models! Yet, we found no Attribute 'predictor_descriptions' in the metatask!")
+
     # -- Get Arguments for different steps of the ensemble evaluation
     val_data = use_validation_data_to_train_ensemble_techniques
     if val_data:
@@ -135,10 +144,14 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
                            "meta_train_test_split_fraction": meta_train_test_split_fraction,
                            "meta_train_test_split_random_state": meta_train_test_split_random_state}
 
-    base_model_build_kwargs = {"pre_fit_base_models": pre_fit_base_models,
-                               "base_models_with_names": base_models_with_names,
-                               "label_encoder": label_encoder, "probability_calibration": probability_calibration,
-                               "to_confidence_name": metatask.to_confidence_name, "verbose": verbose}
+    base_model_build_kwargs = {
+        "pre_fit_base_models": pre_fit_base_models,
+        "base_models_with_names": base_models_with_names,
+        "label_encoder": label_encoder, "probability_calibration": probability_calibration,
+        "to_confidence_name": metatask.to_confidence_name,
+        "predictor_descriptions": metatask.predictor_descriptions if store_metadata_in_fake_base_model else None,
+        "verbose": verbose
+    }
 
     ensemble_run_kwargs = {"oracle": oracle, "predict_method": predict_method, "verbose": verbose,
                            "isolate_ensemble_execution": isolate_ensemble_execution}
@@ -375,7 +388,7 @@ def _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
                             ensemble_train_X, ensemble_train_y, fake_base_model_known_X,
                             fake_base_model_known_predictions, fake_base_model_known_confidences,
                             pre_fit_base_models, base_models_with_names, label_encoder, probability_calibration,
-                            to_confidence_name, verbose):
+                            to_confidence_name, predictor_descriptions, verbose):
     """Build fake base models from data.
 
     New Parameters (rest can be found in signature of evaluate_ensemble_on_metatask)
@@ -400,6 +413,8 @@ def _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
         Confidences for the instances of fake_base_model_known_X
     to_confidence_name: Callable
         Function that transforms predictor name and class name into confidence column name.
+    predictor_descriptions: dict, default=None
+        Predictor specific metadata; If not None, metadata that is to be stored in the associated predictor.
 
     # Ensemble train X,y: ensemble_train_X, ensemble_train_y
     # Ensemble test X,y: ensemble_test_X, ensemble_test_y
@@ -431,7 +446,7 @@ def _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
                                           val_base_model_train_X, val_base_model_train_y, fake_base_model_known_X,
                                           fake_base_model_known_predictions, fake_base_model_known_confidences,
                                           pre_fit_base_models, base_models_with_names, label_encoder,
-                                          to_confidence_name)
+                                          to_confidence_name, predictor_descriptions)
 
     # -- Probability Calibration
     base_models = probability_calibration_for_faked_models(base_models, ensemble_train_X, ensemble_train_y,
