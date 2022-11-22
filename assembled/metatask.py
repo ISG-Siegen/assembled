@@ -72,6 +72,7 @@ class MetaTask:
         self.save_chunk_size = 1500
         self._delayed_evaluation_load = False
         self._file_load_path = None
+        self._custom_metadata_container = dict()
 
         # -- Randomness (Experimental)
         self.random_int_seed_outer_folds = None
@@ -184,7 +185,7 @@ class MetaTask:
                 "cat_feature_names", "selection_constraints", "task_type", "predictor_corruptions_details",
                 "use_validation_data", "random_int_seed_outer_folds", "random_int_seed_inner_folds",
                 "folds", "fold_postfix", "fold_predictor_prefix", "validation_indices", "use_sparse_dtype",
-                "file_format"]
+                "file_format", "_custom_meta_data_container"]
 
     # -- Properties related to meta_dataset
     @property
