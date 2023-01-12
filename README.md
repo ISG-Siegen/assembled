@@ -141,7 +141,7 @@ If you use Assembled or Assembled-OpenML in scientific publications, we would ap
 Beel,_
 _First Conference on Automated Machine Learning (Late-Breaking Workshop), 2022_
 
-[Link](https://automl.cc/wp-content/uploads/2022/08/assembled_openml_creating_effi-Main-Paper-And-Supplementary-Material.pdf) to publication.
+[Link](https://2022.automl.cc/wp-content/uploads/2022/08/assembled_openml_creating_effi-Main-Paper-And-Supplementary-Material.pdf) to publication.
 
 ```
 @inproceedings{purucker2022assembledopenml,
