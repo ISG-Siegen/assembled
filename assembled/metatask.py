@@ -72,7 +72,7 @@ class MetaTask:
         self.save_chunk_size = 1500
         self._delayed_evaluation_load = False
         self._file_load_path = None
-        self._custom_metadata_container = dict()
+        self._custom_meta_data_container = dict()
 
         # -- Randomness (Experimental)
         self.random_int_seed_outer_folds = None
