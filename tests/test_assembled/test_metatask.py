@@ -4,6 +4,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import balanced_accuracy_score
 from pathlib import Path
+from assembledopenml.openml_assembler import init_dataset_from_task
 
 import numpy as np
 from tests.assembled_metatask_util import build_multiple_test_classification_metatasks, \
@@ -258,3 +259,16 @@ class TestMetaTask:
 
             assert r_mt == mt
             delete_metatask_files(self.base_path / "example_metatasks", -12, file_format=file_format)
+
+    def test_hdf_with_many_columns_dataset(self):
+        metatask = MetaTask()
+        init_dataset_from_task(metatask, 10090)
+        metatask.file_format = "hdf"
+        metatask.to_files(self.base_path / "example_metatasks")
+
+        r_mt = MetaTask()
+        r_mt.read_metatask_from_files(self.base_path / "example_metatasks", 10090)
+
+        assert r_mt == metatask
+
+        delete_metatask_files(self.base_path / "example_metatasks", 10090, file_format="hdf")

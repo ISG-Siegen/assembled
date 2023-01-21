@@ -8,6 +8,8 @@ from assembled.utils.logger import get_logger
 from typing import List, Tuple, Optional, Callable, Union
 from sklearn.model_selection import train_test_split
 
+from tables.exceptions import HDF5ExtError
+
 logger = get_logger(__file__)
 
 
@@ -783,7 +785,17 @@ class MetaTask:
             save_p = os.path.join(output_dir, "metatask_{}.hdf".format(self.openml_task_id))
 
             logger.info("Start Saving Dataset...")
-            self.dataset.to_hdf(save_p, "dataset", mode="w", format="table")
+            try:
+                self.dataset.to_hdf(save_p, "dataset", mode="w", format="table")
+            except HDF5ExtError:
+                logger.info("Dataset is too large to save in one HDF Table. Need to split it up.")
+
+                # Save in chunks
+                self._save_to_hdf_splits(self.dataset, save_p, "dataset")
+
+                # Clean up
+                with pd.HDFStore(save_p, mode="r+") as store:
+                    store.remove("dataset")
 
             logger.info("Start Saving Prediction Data...")
             fold_indices = [int(f_i) for f_i in np.unique(self.folds)]
@@ -791,12 +803,16 @@ class MetaTask:
                 logger.info("Save for Fold: {}".format(fold_index))
                 f_pred = self.get_predictors_for_fold(fold_index)
 
-                logger.info("Save Test Prediction Data...")
-                f_cols = self.get_pred_and_conf_cols(f_pred)
-                _, f_test_i = self.get_indices_for_fold(fold_index)
+                # Enable HDF for incomplete fold data or empty metatasks.
+                if not f_pred:
+                    logger.info("No prediction Data for this Fold... skip.")
+                else:
+                    logger.info("Save Test Prediction Data...")
+                    f_cols = self.get_pred_and_conf_cols(f_pred)
+                    _, f_test_i = self.get_indices_for_fold(fold_index)
 
-                self._save_to_hdf_splits(self.predictions_and_confidences.loc[f_test_i, f_cols],
-                                         save_p, "t_p_d_{}".format(fold_index))
+                    self._save_to_hdf_splits(self.predictions_and_confidences.loc[f_test_i, f_cols],
+                                             save_p, "t_p_d_{}".format(fold_index))
 
                 if self.use_validation_data:
                     logger.info("Save Validation Prediction Data...")
@@ -936,15 +952,24 @@ class MetaTask:
             load_p = os.path.join(input_dir, "metatask_{}.{}".format(openml_task_id, out_f))
 
             logger.info("Start Loading Dataset...")
-            meta_dataset = pd.read_hdf(load_p, "dataset")
+            # Determine save type of dataset
+            with pd.HDFStore(load_p, mode="r") as store:
+                one_table_dataset = "dataset" in store
+
+            if one_table_dataset:
+                meta_dataset = pd.read_hdf(load_p, "dataset")
+            else:
+                # self.folds gives us the number of instances
+                meta_dataset = self._read_dataset_from_hdf_splits(load_p)
 
             if not self._delayed_evaluation_load:
-                logger.info("Start Loading Prediction Data...")
-                # Iteration
-                for fold_index in self.fold_indices:
-                    meta_dataset = pd.concat(
-                        [meta_dataset, self._read_hdf_for_fold(fold_index, meta_dataset.index, load_p)],
-                        axis=1)
+                if self.predictors:  # workaround for empty prediction data, FIXME
+                    logger.info("Start Loading Prediction Data...")
+                    # Iteration
+                    for fold_index in self.fold_indices:
+                        meta_dataset = pd.concat(
+                            [meta_dataset, self._read_hdf_for_fold(fold_index, meta_dataset.index, load_p)],
+                            axis=1)
             else:
                 self._file_load_path = load_p
 
@@ -957,7 +982,7 @@ class MetaTask:
 
     def _fill_prediction_data(self, meta_dataset):
         # Decided what prediction data to save
-        if not self._delayed_evaluation_load:
+        if (not self._delayed_evaluation_load) and (self.pred_and_conf_cols):
             self.predictions_and_confidences = meta_dataset[self.pred_and_conf_cols]
         else:
             # Fallback
@@ -986,6 +1011,22 @@ class MetaTask:
 
         else:
             return pred_and_confs
+
+    def _read_dataset_from_hdf_splits(self, in_path):
+        chunk_indices = pd.read_hdf(in_path, "dataset_md").tolist()
+
+        overall_df = None
+
+        for i in chunk_indices:
+            # Load Data
+            tmp_pd = pd.read_hdf(in_path, f"dataset_{i}")
+
+            if overall_df is None:
+                overall_df = tmp_pd
+            else:
+                overall_df = pd.concat([overall_df, tmp_pd], axis=1)
+
+        return overall_df
 
     def _read_from_hdf_splits(self, meta_dataset_indices, in_path, hdf_key):
         chunk_indices = pd.read_hdf(in_path, hdf_key + "_md").tolist()
