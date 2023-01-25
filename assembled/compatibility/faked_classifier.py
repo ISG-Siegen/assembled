@@ -8,6 +8,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.calibration import CalibratedClassifierCV
 
 from assembled.utils.logger import get_logger
+from pandas.util import hash_array
 
 logger = get_logger(__file__)
 
@@ -19,6 +20,12 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         We store the prediction data with an index whereby the index is the hash of an instance.
             Some Assumptions of this:
                 - Simulated Models return the same results for the same input instance
+
+        !Warnings!:
+            - If the simulated model returns different results for the same input instance (e.g., as a result of
+            using cross-validation to produce the validation data), we set the prediction values for all duplicates
+            to the first value seen for the duplicates.
+
 
     Parameters
     ----------
@@ -75,7 +82,6 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
         # --- Init Parameter Validation
         if (oracle_X is not None) or (simulate_n_features_in_ is None):
-
             if confidences_ is None:
                 oracle_X, predictions_ = self._validate_simulation_data(oracle_X, predictions_, reset=True)
             elif predictions_ is None:
@@ -157,6 +163,8 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         test_data_hash_indices = np.apply_along_axis(self._generate_index_from_row, 1, X)
 
         # Following Idea/Code From: https://www.statology.org/numpy-find-index-of-value/ to find index
+        #   This will set the values of duplicates to the first occurrences of the duplicate
+        #       (because that is the first index that is found by argsort).
         sorter = np.argsort(self.oracle_index_)
         prediction_indices = sorter[np.searchsorted(self.oracle_index_,
                                                     test_data_hash_indices, sorter=sorter)]
@@ -207,6 +215,8 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         test_data_hash_indices = np.apply_along_axis(self._generate_index_from_row, 1, X)
 
         # Following Idea/Code From: https://www.statology.org/numpy-find-index-of-value/ to find index
+        #   This will set the values of duplicates to the first occurrences of the duplicate
+        #       (because that is the first index that is found by argsort).
         sorter = np.argsort(self.oracle_index_)
         confidences_indices = sorter[np.searchsorted(self.oracle_index_,
                                                      test_data_hash_indices, sorter=sorter)]
@@ -281,8 +291,8 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
     @staticmethod
     def _generate_index_from_row(x):
-        # Currently "just" a hash and not a full checksum algorithm... might need to change this
-        return hash(x.tobytes())  # Not consistent between runs (could not be stored), use hashlib for that
+        # consistent between runs, scaled down to avoid overflow
+        return (hash_array(x)*0.000001).sum()
 
 
 # -- Additional Functions for FakedClassifiers Usage

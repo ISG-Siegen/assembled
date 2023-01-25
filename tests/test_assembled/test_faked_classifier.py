@@ -140,3 +140,50 @@ class TestFakedClassifier:
 
         assert pred_time <= sim_pred_time
         assert confs_time <= sim_confs_time
+
+    def test_faked_classifier_cross_val_duplicates(self):
+        """ Problem Description
+
+        Since we hash based on the values of an instance and use this hash to identify which predictions belong to
+        which instance, it is a problem if the data contains duplicates with different predictions. This, however, can
+        naturally happen as a result out-of-fold predictions as validation data.
+
+        In its current implementation, all duplicates will be assigned the same value to avoid multivalued data.
+        This changes the data to some extent compared to the original data.
+        """
+
+        X, y = make_classification(n_samples=1000, n_features=10, n_informative=4, random_state=0, n_classes=3)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
+
+        X_train = np.vstack([X_train, X_train[0, :]])
+        y_train = np.hstack([y_train, y_train[0]])
+        X_test = np.vstack([X_test, X_train[0, :]])
+        y_test = np.hstack([y_test, y_train[0]])
+
+        clf = DummyClassifier()
+        clf.fit(X_train, y_train)
+
+        val_confs = cross_val_predict(clf, X_train, y_train, cv=5, method="predict_proba")
+        clf.fit(X_train, y_train)
+        val_preds = clf.classes_.take(np.argmax(val_confs, axis=1), axis=0)
+        preds = clf.predict(X_test)
+        confs = clf.predict_proba(X_test)
+
+        base_model_train_X = base_model_test_X = np.vstack((X_train, X_test))
+        base_model_known_predictions = np.hstack((val_preds, preds))
+        base_model_known_confidences = np.vstack((val_confs, confs))
+        base_model_train_y = np.hstack((y_train, y_test))
+
+        fc = FakedClassifier(base_model_test_X, base_model_known_predictions, base_model_known_confidences)
+
+        fc.fit(base_model_train_X, base_model_train_y)
+
+        # It can not be equal due to duplicates
+        assert not np.array_equal(fc.predict_proba(X_test), confs)
+        assert not np.array_equal(fc.predict_proba(X_train), val_confs)
+
+        # The duplicated value should be equal to the value that appears first in the training data
+        train_a = fc.predict_proba(X_train)
+        test_a = fc.predict_proba(X_test)
+        assert np.array_equal(train_a[0, :], train_a[-1, :])
+        assert np.array_equal(test_a[-1, :], train_a[0, :])
