@@ -19,13 +19,28 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         We assume the input passed to init is the same format as training X (will be validated in predict).
         We store the prediction data with an index whereby the index is the hash of an instance.
             Some Assumptions of this:
-                - Simulated Models return the same results for the same input instance
+                TODO: add checks for this
+                    - Simulated Models return the same results for the same input instance
+                    - Input data is only numeric (as the default preprocessor makes sure)
+
 
         !Warnings!:
             - If the simulated model returns different results for the same input instance (e.g., as a result of
             using cross-validation to produce the validation data), we set the prediction values for all duplicates
             to the first value seen for the duplicates.
 
+        A Remark on Hashing if Duplicates are Present:
+            The hash we are using is consistent between runs of the same INTERPRETER, i.e., Python Version
+            (see https://stackoverflow.com/a/64356731). It is only consistent because we are hashing a tuple of
+            numeric values. This would not work for hashes of strings without changing the code
+            (see https://stackoverflow.com/a/2511075).
+
+            Consistency is required if duplicates are present, because otherwise, in the current implementation,
+            the prediction value selected to represent all duplicates might change and thus the data that is passed
+            to an ensemble method would change.
+
+            TODO: re-implement this, change hash method, or think of different approach to
+                non-restrictive index management
 
     Parameters
     ----------
@@ -291,6 +306,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
     @staticmethod
     def _generate_index_from_row(x):
+        # See Class docu above why this works
         return hash(tuple(x))
 
 
