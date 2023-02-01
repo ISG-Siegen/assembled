@@ -291,7 +291,6 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
     @staticmethod
     def _generate_index_from_row(x):
-        # consistent between runs, scaled down to avoid overflow
         return hash(tuple(x))
 
 
