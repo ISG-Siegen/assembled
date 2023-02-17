@@ -34,7 +34,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_material",
     "sphinx_copybutton",
-    "matplotlib.sphinxext.plot_directive",
     "sphinx_toolbox.more_autodoc.autonamedtuple",
     "sphinx_autodoc_typehints",
     "sphinx_codeautolink",
