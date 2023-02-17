@@ -51,7 +51,11 @@ class AbstractEnsemble(object):
         self.passthrough = passthrough
 
         # Get the classes seen by the base model on the data they have been trained on.
-        self.base_model_le_ = self.base_models[0].le_
+        try:
+            self.base_model_le_ = self.base_models[0].le_
+        except AttributeError:
+            # Most likely calibrated classifier or other wrapper
+            self.base_model_le_ = self.base_models[0].base_estimator.le_
 
         if predict_method_ensemble_predict is None:
             self.predict_method_ensemble_predict = predict_method

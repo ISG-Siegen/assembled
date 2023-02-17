@@ -289,7 +289,11 @@ class VotingClassifier(ClassifierMixin, _BaseVoting):
         self.verbose = verbose
         self.prefitted = prefitted
         if self.prefitted:
-            self.base_model_le_ = estimators[0][-1].le_
+            try:
+                self.base_model_le_ = estimators[0][-1].le_
+            except AttributeError:
+                # Most likely calibrated classifier
+                self.base_model_le_ = estimators[0][-1].base_estimator.le_
 
     def fit(self, X, y, sample_weight=None):
         """Fit the estimators.

@@ -1,5 +1,5 @@
 # -- Imports for Ensemble Techniques
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import KMeans
 from deslib.dcs import APosteriori, APriori, LCA, MCB, MLA, OLA, Rank
@@ -7,7 +7,6 @@ from deslib.des import METADES, DESClustering, DESP, DESKNN, KNOP, KNORAE, KNORA
 from deslib.des.probabilistic import RRC, DESKL, MinimumDifference, Logarithmic, Exponential
 from ensemble_techniques.autosklearn.ensemble_selection import EnsembleSelection
 from ensemble_techniques.custom.baselines import SingleBest, VirtualBest
-from ensemble_techniques.custom.ds_epm import DSEmpiricalPerformanceModel
 from ensemble_techniques.sklearn.stacking import StackingClassifier
 from ensemble_techniques.sklearn.voting import VotingClassifier
 
@@ -154,21 +153,6 @@ def get_autosklearn_techniques(rng_seed):
 
 
 def get_custom_techniques(rng_seed):
-    new_techniques = {
-        "custom.DSEmpiricalPerformanceModel.DES.wsv": {
-            "technique": DSEmpiricalPerformanceModel,
-            "technique_args": {"epm": RandomForestRegressor(random_state=RandomState(rng_seed), n_jobs=-1),
-                               "epm_error": "predict_proba",
-                               "ensemble_selection": True, "ensemble_combination_method": "weighted_soft_voting"},
-            "probability_calibration": "auto"
-        },
-        "custom.DSEmpiricalPerformanceModel.DCS": {
-            "technique": DSEmpiricalPerformanceModel,
-            "technique_args": {"epm": RandomForestRegressor(random_state=RandomState(rng_seed), n_jobs=-1),
-                               "epm_error": "predict_proba"},
-            "probability_calibration": "auto"
-        },
-    }
     baselines = {
         "custom.VirtualBest": {
             "technique": VirtualBest,
@@ -183,7 +167,7 @@ def get_custom_techniques(rng_seed):
             "probability_calibration": "auto"
         }
     }
-    custom_techniques = {**new_techniques, **baselines}
+    custom_techniques = {**baselines}
     custom_default_values = {"pre_fit_base_models": True, "preprocessor": get_default_preprocessing()}
     for key in custom_techniques.keys():
         custom_techniques[key].update(custom_default_values)

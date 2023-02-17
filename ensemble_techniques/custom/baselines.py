@@ -56,9 +56,8 @@ class VirtualBest(AbstractEnsemble):
         For classification, we assume that an algorithm is a "best" algorithm for an instance if it can correctly
         classify the current instance. The probability of correct classification is not relevant for this.
         """
-        label_indicator = self.le_.transform(labels)
         correct_predicted = np.array([[max(vals) == vals[i]
-                                       for vals, i in zip(bm_confs, label_indicator)]
+                                       for vals, i in zip(bm_confs, labels)]
                                       for bm_confs in base_models_predictions])
 
         # This will, by default, return all base models' indices if no base model correctly classified an instance
@@ -75,7 +74,8 @@ class VirtualBest(AbstractEnsemble):
 
             # Update values in list where needed
             for no_best_instance_idx in idx_no_best_model:
-                correct_class_idx = np.where(self.classes_ == labels[no_best_instance_idx])[0][0]
+                correct_class_idx = \
+                np.where(self.classes_ == self.le_.inverse_transform(labels)[no_best_instance_idx])[0][0]
                 best_indices[no_best_instance_idx] = [np.argmax(bm_confs[:, no_best_instance_idx, correct_class_idx])]
 
         return best_indices

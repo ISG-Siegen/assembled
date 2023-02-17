@@ -20,16 +20,16 @@ FakedClassifiers and other compatability utilities can be found in the `assemble
 
 The file `collect_ensemble_techniques.py` contains the code to invoke the ensemble technique and the parameters passed
 to the ensemble technique at run time. Moreover, we include additional parameters required by
-the `run_ensemble_on_all_folds` function of a metatask to know how to execute and handle these ensemble techniques.
+the `evaluate_ensemble_on_metatask` function of a metatask to know how to execute and handle these ensemble techniques.
 
 We support the following Ensemble Techniques through FakedClassifiers:
 
-| Library | Techniques | n_techniques | Comment |
-|---|---|---|---|
-| scikit-learn | Stacking/Blending, Voting | 2 | - |
-| DESlib | Many Dynamic (Ensemble/Classifier) Selection Techniques | 19 | We are not using static techniques.  |
-| auto-sklearn | Ensemble Selection | 1 | - |
-| Custom | VirtualBest, SingleBest, Dynamic Selection with EPMs | 3 | - |
+| Library | Techniques                                              | n_techniques | Comment |
+|---|---------------------------------------------------------|--------------|---|
+| scikit-learn | Stacking/Blending, Voting                               | 2            | - |
+| DESlib | Many Dynamic (Ensemble/Classifier) Selection Techniques | 19           | We are not using static techniques.  |
+| auto-sklearn | Ensemble Selection                                      | 1            | - |
+| Custom | VirtualBest, SingleBest                                 | 2            | - |
 
 ## General Remarks
 
