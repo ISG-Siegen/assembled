@@ -32,9 +32,7 @@
   in `/ensemble_techniques/`). By default, the code will save the output (ensemble techniques' predictions) in a
   directory. The ensemble techniques evaluated with the metatasks are run by simulating the base model through our faked
   predictors (e.g., FakedClassifier) classes. This evaluation is without validation data by default.
-* `example_evaluation_and_analysis.py` The code runs an evaluation and analysis of the output of a benchmark (as created
-  by the metatask evaluation functionality). Currently, it produces plots and data to determine the average best
-  ensemble technique.
+
 
 ## Default Example Benchmark Settings
 

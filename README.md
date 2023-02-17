@@ -107,10 +107,6 @@ print(fold_scores)
 print("Average Performance:", sum(fold_scores) / len(fold_scores))
 ```
 
-To re-use our evaluation code, coined Assembled-Evaler for now, a benchmark must have been run first,
-see `example_run_benchmark.py` and `example_rebuild_benchmark_data.py`. Afterwards,
-see `example_evaluation_and_analysis.py` to run our pre-defined evaluation code.
-
 ## Limitations
 
 * **Regression is not supported** so far as OpenML has not enough data (runs) on Regression tasks. Would require some

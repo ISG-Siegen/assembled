@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "assembled"
 version = "0.0.3"
 authors = [
-  { name="Lennart Purucker", email="lennart.purucker@uni-siegen.de" },
+    { name = "Lennart Purucker", email = "lennart.purucker@uni-siegen.de" },
 ]
 description = "Efficiently Benchmarking Ensembles in AutoML"
 readme = "README.md"
@@ -30,7 +30,7 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["assembled", "assembled.compatibility", "assembled.utils",
- "assembledopenml", "assembledopenml.util"]
+    "assembledopenml", "assembledopenml.util"]
 
 [project.optional-dependencies]
 test = [

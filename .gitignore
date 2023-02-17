@@ -310,3 +310,40 @@ $RECYCLE.BIN/
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/vcs.xml
 /config.ini
+
+
+# Distribution / packaging
+.Python
+env/
+venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Sphinx documentation
+docs/_build/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Custom Experiment Stuff
+results/ask_benchmarks
+results/example_benchmark/benchmark_metatasks/*.csv
+results/example_benchmark/benchmark_metatasks/*.json
+results/metatask/*.csv
+results/metatask/*.json
+results/openml_benchmark/benchmark_metatasks/*.csv
+results/openml_benchmark/benchmark_metatasks/*.json

@@ -28,7 +28,7 @@ if __name__ == "__main__":
         mt.read_metatask_from_files(path_to_benchmark_data, task_id)
         print("#### Process Task {} for dataset {} ({}/{}) ####".format(mt.openml_task_id, mt.dataset_name,
                                                                         task_nr, nr_tasks))
-        out_path = "../results/openml_benchmark/benchmark_output/results_for_metatask_{}.csv".format(task_id)
+        out_path = "../results/openml_benchmark/benchmark_output/"
 
         # -- Get techniques (initialize new for each task due to randomness and clean start)
         techniques_to_benchmark = get_benchmark_techniques(rng_seed)
@@ -41,7 +41,7 @@ if __name__ == "__main__":
                                                                            nr_techniques))
             counter_techniques += 1
             scores = evaluate_ensemble_on_metatask(mt, technique_name=technique_name, **technique_run_args,
-                                                   meta_train_test_split_fraction=0.5, output_file_path=out_path,
+                                                   meta_train_test_split_fraction=0.5, output_dir_path=out_path,
                                                    meta_train_test_split_random_state=test_split_rng,
                                                    return_scores=OpenMLAUROC)
             print("K-Fold Average Performance:", sum(scores) / len(scores))

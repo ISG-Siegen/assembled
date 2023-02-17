@@ -46,7 +46,7 @@ Since many ensemble techniques would not need to touch the trainings features, w
 avoid preprocessing the training features entirely for these cases. This, however, requires
 us to remove a lot of checks from our models and code (like no nans allowed, numeric only dtype,...).
 
-Since do not want to do this, it seems more logical to determine a default preprocessor.
+Since we do not want to do this, it seems more logical to determine a default preprocessor.
 The default preprocessor transforms categories to integers and fills missing values.
 
 # Documentation TODOs for the Future
