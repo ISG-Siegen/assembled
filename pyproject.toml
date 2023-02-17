@@ -52,7 +52,10 @@ docs = [
     "sphinx-toolbox==3.4.0",
     "sphinx-autodoc-typehints==1.22",
     "sphinx-codeautolink==0.14.1",
-    "myst-parser==0.18.1",]
+    "myst-parser==0.18.1",
+    # The following is needed as we build both docs as the same time
+    "openml~=0.12.2",
+    "requests~=2.27.1",]
 openml = [
     "openml~=0.12.2",
     "requests~=2.27.1",
