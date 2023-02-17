@@ -1,4 +1,4 @@
-# Assembled
+# assembled
 
 Assembled is planed to be a framework for ensemble evaluation. It shall run, benchmark, and evaluate ensemble techniques
 without the overhead of training base models.
@@ -28,7 +28,7 @@ Currently, is main use-cases are:
 
 This repository/branch also contains the Assembled-OpenML extension.
 
-### Assembled-OpenML
+## Assembled-OpenML
 
 _For the original code of the workshop paper on Assembled-OpenML, see the `automl_workshop_paper` branch_
 

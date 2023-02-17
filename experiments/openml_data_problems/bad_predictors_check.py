@@ -4,7 +4,7 @@ We have used this to find the KNOWN_BAD_FLOWS below for a subset of all crawled 
 This might be helpful to explore the problems of OpenML prediction data in the future.
 """
 
-from assembled.benchmaker import get_id_and_validate_existing_data
+from assembled.benchmaker import _get_id_and_validate_existing_data
 from assembled.metatask import MetaTask
 from assembledopenml.metaflow import MetaFlow
 import pandas as pd
@@ -24,7 +24,7 @@ def get_bad_rows_df(meta_flow, mf_not_equal_at_all_idx):
 
 # Get ids
 base_path = "../../results/metatasks"
-valid_task_ids = get_id_and_validate_existing_data(base_path)  # or set valid ids directly: [3, 6, 11, 12, 14, 15]
+valid_task_ids = _get_id_and_validate_existing_data(base_path)  # or set valid ids directly: [3, 6, 11, 12, 14, 15]
 
 # Collect stats for each id
 selection_constraints = {}

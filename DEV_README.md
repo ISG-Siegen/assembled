@@ -2,6 +2,17 @@
 
 This section is very much work in progress...
 
+## Installation
+Clone the repository and install the dev requirements:
+
+```bash
+git clone https://github.com/ISG-Siegen/assembled.git
+cd assembled
+python3 -m venv venv_assembled
+source venv_assembled/bin/activate
+pip install .[dev,openml]
+```
+
 ## Unit Tests
 
 We use [py.test](https://docs.pytest.org/en/latest/) for unit testing.
@@ -38,6 +49,14 @@ Which hooks to use is still in debate. Not sure about mypy default etc.
 
 * While in the project root call: `python3 -m build`
 * Afterwards, upload it to pypi via: `python3 -m twine upload dist/*`
+
+### Build Docs
+
+In the docs directory call while being in an environment with the dev requirements installed:
+
+```bash
+make clean && make html
+```
 
 ## Other
 

@@ -10,7 +10,7 @@ from assembled.utils.logger import get_logger
 from assembled.utils.isolation import isolate_function
 from assembled.utils.preprocessing import check_fold_data_for_ensemble
 from assembled.utils.data_mgmt import save_results
-from assembled.compatibility.faked_classifier import probability_calibration_for_faked_models, _initialize_fake_models
+from assembled.compatibility.faked_classifier import _probability_calibration_for_faked_models, _initialize_fake_models
 
 logger = get_logger(__file__)
 
@@ -100,15 +100,14 @@ def evaluate_ensemble_on_metatask(metatask: MetaTask, technique, technique_args:
     verbose: bool, default=False
         If True, evaluation status information are logged.
     isolate_ensemble_execution: bool, default=False
-        If True, we isolate the execution of the ensemble in its own subprocess. This avoids problems
-        with memory leakage or other problems from implementations of the ensemble.
-        !WARNING! Only works on Linux currently; FIXME: Either a bug or not possible on Windows, dont know.
+        If True, we isolate the execution of the ensemble in its own subprocess. This avoids problems with memory
+        leakage or other problems from implementations of the ensemble. FIXME: !WARNING! Only works on Linux currently;
     refit: bool, default=False
         Set to true if the base models have been re-fitted before predicting for test data.
     store_metadata_in_fake_base_model: bool, default=False
         If true, we store metadata about a base model in the FakedBaseModel that is initialized.
         To do so, the metatasks must store metadata about a base model in a dictionary called "predictor_descriptions"
-         where the name of a predictor maps to the desired metadata.
+        where the name of a predictor maps to the desired metadata.
     """
     # TODO -- Parameter Preprocessing / Checking
     #   Add safety check for file path here or something
@@ -449,8 +448,8 @@ def _build_fake_base_models(test_base_model_train_X, test_base_model_train_y,
                                           to_confidence_name, predictor_descriptions)
 
     # -- Probability Calibration
-    base_models = probability_calibration_for_faked_models(base_models, ensemble_train_X, ensemble_train_y,
-                                                           probability_calibration, pre_fit_base_models)
+    base_models = _probability_calibration_for_faked_models(base_models, ensemble_train_X, ensemble_train_y,
+                                                            probability_calibration, pre_fit_base_models)
 
     return base_models
 

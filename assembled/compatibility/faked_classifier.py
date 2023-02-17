@@ -8,7 +8,6 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.calibration import CalibratedClassifierCV
 
 from assembled.utils.logger import get_logger
-from pandas.util import hash_array
 
 logger = get_logger(__file__)
 
@@ -16,41 +15,38 @@ logger = get_logger(__file__)
 class FakedClassifier(BaseEstimator, ClassifierMixin):
     """A fake classifier that simulates a real classifier from the prediction data of the real classifier.
 
-        We assume the input passed to init is the same format as training X (will be validated in predict).
-        We store the prediction data with an index whereby the index is the hash of an instance.
-            Some Assumptions of this:
-                TODO: add checks for this
-                    - Simulated Models return the same results for the same input instance
-                    - Input data is only numeric (as the default preprocessor makes sure)
+    We assume the input passed to init is the same format as training X (will be validated in predict).
+    We store the prediction data with an index whereby the index is the hash of an instance.
+
+    Some Assumptions of this: TODO: add checks for this
+        - Simulated Models return the same results for the same input instance
+        - Input data is only numeric (as the default preprocessor makes sure)
 
 
-        !Warnings!:
-            - If the simulated model returns different results for the same input instance (e.g., as a result of
-            using cross-validation to produce the validation data), we set the prediction values for all duplicates
-            to the first value seen for the duplicates.
+    !Warnings!:
+        - If the simulated model returns different results for the same input instance (e.g., as a result of using
+          cross-validation to produce the validation data), we set the prediction values for all duplicates to
+          the first value seen for the duplicates.
 
-        A Remark on Hashing if Duplicates are Present:
-            The hash we are using is consistent between runs of the same INTERPRETER, i.e., Python Version
-            (see https://stackoverflow.com/a/64356731). It is only consistent because we are hashing a tuple of
-            numeric values. This would not work for hashes of strings without changing the code
-            (see https://stackoverflow.com/a/2511075).
 
-            Consistency is required if duplicates are present, because otherwise, in the current implementation,
-            the prediction value selected to represent all duplicates might change and thus the data that is passed
-            to an ensemble method would change.
+    A Remark on Hashing if Duplicates are Present:
+        The hash we are using is consistent between runs of the same INTERPRETER, i.e., Python Version
+        (see https://stackoverflow.com/a/64356731). It is only consistent because we are hashing a tuple of
+        numeric values. This would not work for hashes of strings without changing the code
+        (see https://stackoverflow.com/a/2511075).
 
-            TODO: re-implement this, change hash method, or think of different approach to
-                non-restrictive index management
+        Consistency is required if duplicates are present, because otherwise, in the current implementation,
+        the prediction value selected to represent all duplicates might change and thus the data that is passed
+        to an ensemble method would change.
+
+        TODO: re-implement this, change hash method, or think of different approach to non-restrictive index management
 
     Parameters
     ----------
     simulate_time : bool, default=False'
         Whether the fake mode should also fake the time it takes to fit and predict.
         Note: currently we are not compensating for the overhead of the simulation in anyway or form.
-              TODO: this is future work; does not support validation data....
-
-    Parameters that are Simulated Attributes
-    ----------
+        TODO: this is future work; does not support validation data....
     oracle_X : array-like, shape (n_samples, n_features)
         The test input samples.
     predictions_ : array-like, shape (n_samples,)
@@ -77,11 +73,11 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
 
     Attributes
     ----------
-    classes_ : ndarray, shape (n_classes,)
+    classes\_ : ndarray, shape (n_classes,)
         The classes seen at :meth:`fit`.
-    le_ : LabelEncoder, object
+    le\_ : LabelEncoder, object
         The label encoder created at :meth:`fit`.
-    n_features_in_: int
+    n_features_in\_ : int
         The number of features seen during fit.
     """
 
@@ -207,7 +203,7 @@ class FakedClassifier(BaseEstimator, ClassifierMixin):
         -------
         y : ndarray, shape (n_samples, n_classes)
             Returns the probability of each sample for each class in the model, where classes are ordered as they
-            are in self.classes_.
+            are in self.classes\_.
         """
 
         # Validate length of confidences
@@ -373,8 +369,8 @@ def _initialize_fake_models(test_base_model_train_X, test_base_model_train_y, va
     return faked_base_models
 
 
-def probability_calibration_for_faked_models(base_models, X_meta_train, y_meta_train, probability_calibration_type,
-                                             pre_fit_base_models):
+def _probability_calibration_for_faked_models(base_models, X_meta_train, y_meta_train, probability_calibration_type,
+                                              pre_fit_base_models):
     # -- Simply return base models without changes
     if probability_calibration_type == "no":
         return base_models

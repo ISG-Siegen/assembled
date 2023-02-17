@@ -46,7 +46,7 @@ class BenchMaker:
                  remove_constant_predictors: bool = False, remove_worse_than_random_predictors: bool = False,
                  remove_bad_predictors: bool = False, metric_info: Tuple[Callable, str, bool] = None):
         # TODO: add path validation here
-        self.valid_task_ids = get_id_and_validate_existing_data(path_to_metatasks)
+        self.valid_task_ids = _get_id_and_validate_existing_data(path_to_metatasks)
         if tasks_to_use is not None:
             self.valid_task_ids = [t_id for t_id in self.valid_task_ids if t_id in tasks_to_use]
 
@@ -207,42 +207,6 @@ class BenchMaker:
         shutil.rmtree(path_tmp_dir)
 
 
-def get_id_and_validate_existing_data(path_to_metatasks):
-    # -- Get all existing file paths in metatasks directory
-    dir_path_csv = os.path.join(path_to_metatasks, "metatask_*.csv")
-    dir_path_json = os.path.join(path_to_metatasks, "metatask_*.json")
-    data_paths = glob.glob(dir_path_csv)
-    meta_data_paths = glob.glob(dir_path_json)
-
-    # -- Merge files for validation
-    path_tuples = []
-    for csv_path in data_paths:
-        csv_name = csv_path[:-4]
-        for json_path in meta_data_paths:
-            json_name = json_path[:-5]
-            if csv_name == json_name:
-                path_tuples.append((csv_path, json_path, os.path.basename(csv_name)))
-                break
-
-    # - Validate number of pairs
-    l_dp = len(data_paths)
-    l_mdp = len(meta_data_paths)
-    l_pt = len(path_tuples)
-    if l_pt < l_mdp or l_pt < l_dp:
-        print("Found more files in the preprocessed data directory than file pairs: " +
-              "Pairs {}, CSV files: {}, JSON files: {}".format(l_pt, l_dp, l_mdp))
-
-    # - Validate correctness of merge
-    for paths_tuple in path_tuples:
-        try:
-            assert paths_tuple[0][:-4] == paths_tuple[1][:-5]
-        except AssertionError:
-            raise ValueError("Some data files have wrongly configured names: {} vs. {}".format(paths_tuple[0],
-                                                                                               paths_tuple[1]))
-    # - Only get task Ids
-    return [p_vals[2].rsplit(sep="_", maxsplit=1)[-1] for p_vals in path_tuples]
-
-
 def load_benchmark_details(path_to_benchmark_details):
     file_path_json = os.path.join(path_to_benchmark_details, "benchmark_details.json")
 
@@ -282,6 +246,42 @@ def rebuild_benchmark(output_path_benchmark_metatask: str, id_to_dataset_load_fu
         _rebuild_from_share_prediction_data(benchmark_data, id_to_dataset_load_function, output_path_benchmark_metatask)
     else:
         raise ValueError("Unknown share_data value. Got: {}".format(share_data))
+
+
+def _get_id_and_validate_existing_data(path_to_metatasks):
+    # -- Get all existing file paths in metatasks directory
+    dir_path_csv = os.path.join(path_to_metatasks, "metatask_*.csv")
+    dir_path_json = os.path.join(path_to_metatasks, "metatask_*.json")
+    data_paths = glob.glob(dir_path_csv)
+    meta_data_paths = glob.glob(dir_path_json)
+
+    # -- Merge files for validation
+    path_tuples = []
+    for csv_path in data_paths:
+        csv_name = csv_path[:-4]
+        for json_path in meta_data_paths:
+            json_name = json_path[:-5]
+            if csv_name == json_name:
+                path_tuples.append((csv_path, json_path, os.path.basename(csv_name)))
+                break
+
+    # - Validate number of pairs
+    l_dp = len(data_paths)
+    l_mdp = len(meta_data_paths)
+    l_pt = len(path_tuples)
+    if l_pt < l_mdp or l_pt < l_dp:
+        print("Found more files in the preprocessed data directory than file pairs: " +
+              "Pairs {}, CSV files: {}, JSON files: {}".format(l_pt, l_dp, l_mdp))
+
+    # - Validate correctness of merge
+    for paths_tuple in path_tuples:
+        try:
+            assert paths_tuple[0][:-4] == paths_tuple[1][:-5]
+        except AssertionError:
+            raise ValueError("Some data files have wrongly configured names: {} vs. {}".format(paths_tuple[0],
+                                                                                               paths_tuple[1]))
+    # - Only get task Ids
+    return [p_vals[2].rsplit(sep="_", maxsplit=1)[-1] for p_vals in path_tuples]
 
 
 def _dataset_load_function_for_openml_tasks(task_ids):

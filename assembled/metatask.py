@@ -143,10 +143,9 @@ class MetaTask:
 
     @property
     def n_predictors(self):
-        """Important: this contains all predictors. Hence, this includes predictors from each fold.
+        # Important: this contains all predictors. Hence, this includes predictors from each fold.
+        # Use n_predictors_per_fold to get a more accurate picture of predictors per fold.
 
-        Use n_predictors_per_fold to get a more accurate picture of predictors per fold.
-        """
         return len(self.predictors)
 
     @property
@@ -197,7 +196,7 @@ class MetaTask:
 
     @property
     def all_columns(self):
-        """all column names in a specific order"""
+        # All column names in a specific order
         return self.feature_names + [self.target_name] + self.pred_and_conf_cols \
                + self.validation_predictions_columns + self.validation_confidences_columns
 
@@ -1362,8 +1361,8 @@ class MetaTask:
             If not None, the function will only return the fold data for the fold indices
             specified in the list.
 
-        Yields for each fold
-        ----------
+        Returns
+        -------
         idx: int
             Fold index
         X_train: DataFrame
