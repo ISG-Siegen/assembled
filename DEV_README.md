@@ -3,14 +3,14 @@
 This section is very much work in progress...
 
 ## Installation
-Clone the repository and install the dev requirements:
+Clone the repository and install the dev (and docs) requirements:
 
 ```bash
 git clone https://github.com/ISG-Siegen/assembled.git
 cd assembled
 python3 -m venv venv_assembled
 source venv_assembled/bin/activate
-pip install .[dev,openml]
+pip install .[dev,docs,openml]
 ```
 
 ## Unit Tests
@@ -50,9 +50,9 @@ Which hooks to use is still in debate. Not sure about mypy default etc.
 * While in the project root call: `python3 -m build`
 * Afterwards, upload it to pypi via: `python3 -m twine upload dist/*`
 
-### Build Docs
+### Build Docs Locally
 
-In the docs directory call while being in an environment with the dev requirements installed:
+In the docs directory call while being in an environment with the doc requirements installed:
 
 ```bash
 make clean && make html
@@ -70,8 +70,6 @@ The default preprocessor transforms categories to integers and fills missing val
 
 # Documentation TODOs for the Future
 
-* Setup Docstring Documentation / Webpage
-* Make User and Developer Documentation Separate; add more details and examples -> extensive user / developer
-  documentation
+* Add better developer documentation
 * Refactor / Re-work unit test to exclude OpenML as much as possible and add more tests
 * Add CI: Automatic Testing; Releases
