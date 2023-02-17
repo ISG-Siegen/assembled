@@ -37,6 +37,13 @@ dev = [
     # Test and Pre-commit
     "pre-commit==2.15.0",
     "pytest==6.2.5",
+
+    # Other
+    "build",
+    "wheel==0.36.2",
+    "twine==1.14.0",
+]
+docs = [
     # Documentation
     "Sphinx==5.3.0",
     "sphinx-material==0.0.35",
@@ -45,12 +52,7 @@ dev = [
     "sphinx-toolbox==3.4.0",
     "sphinx-autodoc-typehints==1.22",
     "sphinx-codeautolink==0.14.1",
-    "myst-parser==0.18.1",
-    # Other
-    "build",
-    "wheel==0.36.2",
-    "twine==1.14.0",
-]
+    "myst-parser==0.18.1",]
 openml = [
     "openml~=0.12.2",
     "requests~=2.27.1",
