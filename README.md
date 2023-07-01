@@ -28,6 +28,17 @@ Currently, is main use-cases are:
 
 This repository/branch also contains the Assembled-OpenML extension.
 
+## Publicly Available Data for Assembled
+
+The followings projects collected data for assembled and share them publicly:
+
+* Metatasks containing the data for base models produced by executing [AutoGluon](https://auto.gluon.ai/) on the 71
+  classification datasets from the AutoML benchmark: [Code](https://doi.org/10.6084/m9.figshare.23609226)
+  and [Data](https://figshare.com/articles/dataset/Metatasks_for_AutoGluon_-_ROC_AUC_and_Balanced_Accuracy/23609361)
+* Metatasks containing the data for base models produced by
+  executing [Auto-Sklearn 1](https://automl.github.io/auto-sklearn) on the 71 classification datasets from the AutoML
+  benchmark: TBA
+
 ## Assembled-OpenML
 
 _For the original code of the workshop paper on Assembled-OpenML, see the `automl_workshop_paper` branch_
@@ -129,7 +140,7 @@ Alternatively, if a metatask and the base models stored in the metatask were ini
 we can also use the validation data to train the ensemble technique and then test it on all test data/predictions of a
 fold.
 
-## Relevant publications
+## Relevant Publication
 
 If you use Assembled or Assembled-OpenML in scientific publications, we would appreciate citations.
 
@@ -137,7 +148,13 @@ If you use Assembled or Assembled-OpenML in scientific publications, we would ap
 Beel,_
 _First Conference on Automated Machine Learning (Late-Breaking Workshop), 2022_
 
-[Link](https://2022.automl.cc/wp-content/uploads/2022/08/assembled_openml_creating_effi-Main-Paper-And-Supplementary-Material.pdf) to publication.
+Link to
+publication: [AutoML Conference](https://2022.automl.cc/wp-content/uploads/2022/08/assembled_openml_creating_effi-Main-Paper-And-Supplementary-Material.pdf)
+and arXiv (TBA)
+
+Link to teaser video: [YouTube](https://www.youtube.com/watch?v=8OI8pWfWzM8)
+
+Link to full video: [YouTube](https://www.youtube.com/watch?v=WC-ndeKr_Ms)
 
 ```
 @inproceedings{purucker2022assembledopenml,
