@@ -34,10 +34,11 @@ The followings projects collected data for assembled and share them publicly:
 
 * Metatasks containing the data for base models produced by executing [AutoGluon](https://auto.gluon.ai/) on the 71
   classification datasets from the AutoML benchmark: [Code](https://doi.org/10.6084/m9.figshare.23609226)
-  and [Data](https://figshare.com/articles/dataset/Metatasks_for_AutoGluon_-_ROC_AUC_and_Balanced_Accuracy/23609361)
+  and [Data](https://doi.org/10.6084/m9.figshare.23609361)
 * Metatasks containing the data for base models produced by
   executing [Auto-Sklearn 1](https://automl.github.io/auto-sklearn) on the 71 classification datasets from the AutoML
-  benchmark: TBA
+  benchmark: [Code](https://doi.org/10.6084/m9.figshare.23613624)
+  and [Data](https://doi.org/10.6084/m9.figshare.23613627)
 
 ## Assembled-OpenML
 
@@ -150,7 +151,7 @@ _First Conference on Automated Machine Learning (Late-Breaking Workshop), 2022_
 
 Link to
 publication: [AutoML Conference](https://2022.automl.cc/wp-content/uploads/2022/08/assembled_openml_creating_effi-Main-Paper-And-Supplementary-Material.pdf)
-and arXiv (TBA)
+and [arXiv](https://arxiv.org/abs/2307.00285)
 
 Link to teaser video: [YouTube](https://www.youtube.com/watch?v=8OI8pWfWzM8)
 
@@ -160,7 +161,7 @@ Link to full video: [YouTube](https://www.youtube.com/watch?v=WC-ndeKr_Ms)
 @inproceedings{purucker2022assembledopenml,
     title={Assembled-Open{ML}: Creating Efficient Benchmarks for Ensembles in Auto{ML} with Open{ML}},
     author={Lennart Purucker and Joeran Beel},
-    booktitle={First Conference on Automated Machine Learning (Late-Breaking Workshop)},
+    booktitle={First International Conference on Automated Machine Learning (Late-Breaking Workshop)},
     year={2022}
 }
 ```
